@@ -3,7 +3,6 @@ import os
 import json
 import numpy as np
 
-
 apps = {
     "fn_py_bfs": (["fn_py_bfs"], True),
     "fn_py_chameleon": (["fn_py_chameleon"], True),
@@ -109,12 +108,179 @@ def collect():
     return results
 
 
-def print_table(results):
-    print(f"{'APP':<24}\tK\tN\tC\tOP\tOV")
+def gen_table(results):
+    lines = []
+    lines.append("K: Kata-CVM (s), N: Native (s), C: CoFunc (s), OP: Optimization, OV: Overhead")
+    lines.append("OP = K / C, OV = (C / N - 1) * 100")
+    lines.append("-----------------------------------------------------------------------------")
+    lines.append(f"{'Function':<24}\t{'K':<4}\t{'N':<4}\t{'C':<4}\t{'OP':<5}\t{'OV':<5}")
     for app_name, (kata, native, cofunc) in results.items():
         optimization = kata / cofunc
         overhead = (cofunc - native) / native * 100
-        print(f"{app_name:<24}\t{kata:.3f}\t{native:.3f}\t{cofunc:.3f}\t{optimization:.3f}\t{overhead:.3f}")
+        lines.append(f"{app_name:<24}\t{kata:.3f}\t{native:.3f}\t{cofunc:.3f}\t{optimization:.3f}\t{overhead:.3f}")
+    return "\n".join(lines)
 
 
-print_table(collect())
+if __name__ == "__main__":
+    results = collect()
+    table = gen_table(results)
+    with open("plots/fig11.txt", "w") as file:
+        file.write(table)
+    print(table)
+
+
+#########################
+
+
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+
+mpl.rcParams["hatch.linewidth"] = 0.8 
+
+x_tick_names = [
+    "fn_py_face_detection",
+    "fn_py_image_processing",
+    "fn_py_sentiment",
+    "fn_py_video_processing",
+    "fn_py_compression",
+    "fn_py_dna_visualisation",
+    "fn_js_uploader",
+    "fn_js_thumbnailer",
+    "chain_js_alexa",
+]
+
+x_tick_names_short = [
+    "face\n(py)",
+    "image\n(py)",
+    "sentiment\n(py)",
+    "video\n(py)",
+    "compress\n(py)",
+    "dna\n(py)",
+    "upload\n(js)",
+    "thumbnail\n(js)",
+    "alexa\n(js)",
+]
+
+fontsize = 8
+latex_col = 241.02039  ## pt
+
+sbar_space = 0.05
+sbar_wz = 0.3 - sbar_space
+n_sbar = 3
+whole_bar_width = (sbar_space + sbar_wz) * (n_sbar - 1)
+width = whole_bar_width  # the width of the bars: can also be len(x) sequence
+linewidth = 0.5
+
+NATIVE = "Native (SEV)"
+COFUNC = "CoFunc (SEV)"
+KATA = "Kata-CVM (SEV)"
+
+color_list = {NATIVE: '#ced4da', COFUNC: '#adb5bd', KATA: '#6c757d'}
+
+app_dict = {
+    NATIVE: [results[app_name][1] for app_name in x_tick_names],
+    COFUNC: [results[app_name][2] for app_name in x_tick_names],
+    KATA:   [results[app_name][0] for app_name in x_tick_names],
+}
+
+def adjust_ax_style(ax, disable=True):
+    if disable:
+        ax.tick_params(which="major", length=0, axis="x")
+        ax.tick_params(which="minor", length=0, axis="x")
+        ax.tick_params(which="minor", length=0, axis="y")
+        ax.tick_params(which="major", length=2, axis="y")
+    ax.tick_params(axis="y", labelsize=fontsize)
+    ax.tick_params(axis="y", which="major", pad=2)
+    # ax.yaxis.set_tick_params(width=0.2)
+
+    for s in ax.spines:
+        ax.spines[s].set_linewidth(0.1)
+
+    ax.yaxis.grid(color='black', linestyle=(0, (5, 10)), linewidth=0.1, zorder=0)
+
+def plot(fig, spec):
+    ax =  fig.add_subplot(spec)
+    labels = np.arange(start=-1, stop=-1+1.5*len(x_tick_names), step=1.5)
+    
+    # normalized_values = {
+    #     NATIVE: [app_dict[NATIVE][i] / app_dict[KATA][i] for i in range(len(x_tick_names))],
+    #     COFUNC: [app_dict[COFUNC][i] / app_dict[KATA][i] for i in range(len(x_tick_names))],
+    #     KATA:   [app_dict[KATA][i] / app_dict[KATA][i] for i in range(len(x_tick_names))],
+    # }
+
+    for i, k in enumerate(app_dict):
+        hatch = "///////" if k == COFUNC else ""
+        ax.bar(
+            labels + (sbar_wz + sbar_space) * i,
+            app_dict[k],
+            sbar_wz,
+            label=k,
+            hatch=hatch,
+            lw=0.05,
+            edgecolor="black",
+            color=color_list[k],
+            zorder=3
+        )
+    
+    ax.set_ylabel("Latency (s)", fontsize=fontsize, labelpad=4)
+    ax.tick_params(axis="y", labelsize=fontsize)
+    ax.tick_params(axis="y", which="major", pad=1)
+    
+    leg = ax.legend(
+        fontsize=fontsize,
+        frameon=False,
+        loc="upper center",
+        handlelength=1.2,
+        labelspacing=0.1,
+        ncol=3,
+        bbox_to_anchor=(0.48, 1.4),
+        handletextpad=0.3,
+    )
+    leg.set_zorder(1)
+
+    adjust_ax_style(ax)
+    ax.set_yscale('log')
+
+    ax.set_xticks(
+        (labels + whole_bar_width / 2),
+        x_tick_names_short,
+        rotation=10,
+        fontsize=fontsize,
+        #labelpad = -5,
+    )     
+    ax.tick_params(axis='x', labelsize=fontsize)   
+
+def get_figsize(columnwidth, wf=0.5, hf=(5.**0.5-1.0)/2.0):
+    """Parameters:
+    - wf [float]:  width fraction in columnwidth units
+    - hf [float]:  height fraction in columnwidth units.
+                       Set by default to golden ratio.
+    - columnwidth [float]: width of the column in latex. Get this from LaTeX 
+                               using \\showthe\\columnwidth
+    Returns:  [fig_width,fig_height]: that should be given to matplotlib
+      """
+    fig_width_pt = columnwidth*wf 
+    inches_per_pt = 1.0/72.27               # Convert pt to inch
+    fig_width = fig_width_pt*inches_per_pt  # width in inches
+#    fig_height = fig_width*hf      # height in inches
+    fig_height = columnwidth * hf * inches_per_pt
+    return [fig_width, fig_height]
+
+if __name__ == "__main__":
+    plt.rcParams["lines.markersize"] = 3
+
+    fig = plt.figure(constrained_layout=False)
+    spec = gridspec.GridSpec(ncols=1, nrows=1, figure=fig)
+
+    plot(fig, spec[0, 0])
+
+    fig.set_size_inches(get_figsize(latex_col, wf=1.0 * 2 + 0.05, hf=0.105 * 3))
+    fig.subplots_adjust(wspace=0.12, hspace=0.18)
+
+    fig.savefig(
+        "plots/fig11.pdf",
+        dpi=1000,
+        format="pdf",
+        bbox_inches="tight",
+    )

@@ -11,7 +11,7 @@ The artifact includes the following components:
 
 The artifact requires AMD CPUs with SEV-SNP support and a minimum of 8 GB of memory.
 It has been tested on EPYC-7T83 and EPYC-9654 machines.
-A test server is available for AE reviewers (please refer to the artifact appendix).
+A test server is available for AE reviewers (please refer to the HotCRP submission).
 
 ## Software dependencies
 
@@ -24,7 +24,7 @@ The following dependencies are required for building the artifact and running th
 
 For reviewers using the test server, the artifact is already installed, and no further steps are required.
 
-For other users, the artifact can be installed by following these steps:
+For other users, the artifact can be installed with the following steps:
 
 1. Download the host kernel code and apply the patch.
 
@@ -36,7 +36,7 @@ systemd.unified_cgroup_hierarchy=1
 
 3. Build CVM OS, shadow container, serverless functions and some other components with the script `scripts/build.sh`.
 
-4. Enable transparent huge pages with the following command.
+4. Enable transparent huge pages with the following commands.
 
 ```Bash
 echo always | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
