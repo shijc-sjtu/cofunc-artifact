@@ -1,0 +1,151 @@
+From 09f72c879f45ffb6f05ad487169c2709a448b832 Mon Sep 17 00:00:00 2001
+From: Yuan Yao <yuan.yao@intel.com>
+Date: Thu, 1 Jul 2021 09:07:04 +0800
+Subject: [PATCH 87/99] softmmu/physmem: Introduce debug version of physical
+ memory read/write API
+
+Add below APIs for reading/writing the physical memory, subsequent
+patch will use them in monitor commands and gdbstub to support
+encrypted guest debugging.
+
+uint32_t x86_ldl_phys_debug(CPUState *cs, hwaddr addr);
+uint64_t x86_ldq_phys_debug(CPUState *cs, hwaddr addr);
+void cpu_physical_memory_rw_debug(hwaddr addr, void *buf,
+                                  hwaddr len, bool is_write);
+void cpu_physical_memory_read_debug(hwaddr addr,
+                                    void *buf,
+                                    hwaddr len);
+void cpu_physical_memory_write_debug(hwaddr addr,
+                                     const void *buf,
+                                     hwaddr len);
+
+Signed-off-by: Yuan Yao <yuan.yao@intel.com>
+---
+ include/exec/cpu-common.h | 15 +++++++++++++++
+ include/exec/memattrs.h   |  1 +
+ softmmu/physmem.c         | 13 +++++++++++++
+ target/i386/cpu.h         |  2 ++
+ target/i386/helper.c      | 26 ++++++++++++++++++++++++++
+ 5 files changed, 57 insertions(+)
+
+diff --git a/include/exec/cpu-common.h b/include/exec/cpu-common.h
+index db03bf21e9..4d38f5625f 100644
+--- a/include/exec/cpu-common.h
++++ b/include/exec/cpu-common.h
+@@ -117,6 +117,8 @@ void cpu_address_space_init(CPUState *cpu, int asidx,
+ 
+ void cpu_physical_memory_rw(hwaddr addr, void *buf,
+                             hwaddr len, bool is_write);
++void cpu_physical_memory_rw_debug(hwaddr addr, void *buf,
++                                  hwaddr len, bool is_write);
+ static inline void cpu_physical_memory_read(hwaddr addr,
+                                             void *buf, hwaddr len)
+ {
+@@ -127,7 +129,20 @@ static inline void cpu_physical_memory_write(hwaddr addr,
+ {
+     cpu_physical_memory_rw(addr, (void *)buf, len, true);
+ }
++
+ void cpu_reloading_memory_map(void);
++
++static inline void cpu_physical_memory_read_debug(hwaddr addr,
++                                                  void *buf, hwaddr len)
++{
++    cpu_physical_memory_rw_debug(addr, buf, len, false);
++}
++static inline void cpu_physical_memory_write_debug(hwaddr addr,
++                                                   const void *buf, hwaddr len)
++{
++    cpu_physical_memory_rw_debug(addr, (void *)buf, len, true);
++}
++
+ void *cpu_physical_memory_map(hwaddr addr,
+                               hwaddr *plen,
+                               bool is_write);
+diff --git a/include/exec/memattrs.h b/include/exec/memattrs.h
+index 122b4419ff..080e191f43 100644
+--- a/include/exec/memattrs.h
++++ b/include/exec/memattrs.h
+@@ -67,6 +67,7 @@ typedef struct MemTxAttrs {
+  * from "didn't specify" if necessary).
+  */
+ #define MEMTXATTRS_UNSPECIFIED ((MemTxAttrs) { .unspecified = 1 })
++#define MEMTXATTRS_UNSPECIFIED_DEBUG ((MemTxAttrs) { .unspecified = 1, .debug = 1 })
+ 
+ /* New-style MMIO accessors can indicate that the transaction failed.
+  * A zero (MEMTX_OK) response means success; anything else is a failure
+diff --git a/softmmu/physmem.c b/softmmu/physmem.c
+index 032f164d9e..e8bc2e8d69 100644
+--- a/softmmu/physmem.c
++++ b/softmmu/physmem.c
+@@ -3014,6 +3014,19 @@ void cpu_physical_memory_rw(hwaddr addr, void *buf,
+                      buf, len, is_write);
+ }
+ 
++void cpu_physical_memory_rw_debug(hwaddr addr, void *buf,
++                            hwaddr len, bool is_write)
++{
++    if (is_write)
++        physical_memory_debug_ops->write(&address_space_memory,
++                                         addr, MEMTXATTRS_UNSPECIFIED_DEBUG,
++                                         buf, len);
++    else
++        physical_memory_debug_ops->read(&address_space_memory,
++                                        addr, MEMTXATTRS_UNSPECIFIED_DEBUG,
++                                        buf, len);
++}
++
+ enum write_rom_type {
+     WRITE_DATA,
+     FLUSH_CACHE,
+diff --git a/target/i386/cpu.h b/target/i386/cpu.h
+index 576a151c0c..bae9873f48 100644
+--- a/target/i386/cpu.h
++++ b/target/i386/cpu.h
+@@ -2146,6 +2146,8 @@ void x86_stl_phys_notdirty(CPUState *cs, hwaddr addr, uint32_t val);
+ void x86_stw_phys(CPUState *cs, hwaddr addr, uint32_t val);
+ void x86_stl_phys(CPUState *cs, hwaddr addr, uint32_t val);
+ void x86_stq_phys(CPUState *cs, hwaddr addr, uint64_t val);
++uint32_t x86_ldl_phys_debug(CPUState *cs, hwaddr addr);
++uint64_t x86_ldq_phys_debug(CPUState *cs, hwaddr addr);
+ #endif
+ 
+ /* will be suppressed */
+diff --git a/target/i386/helper.c b/target/i386/helper.c
+index fa409e9c44..2b1eb4723f 100644
+--- a/target/i386/helper.c
++++ b/target/i386/helper.c
+@@ -683,4 +683,30 @@ void x86_stq_phys(CPUState *cs, hwaddr addr, uint64_t val)
+ 
+     address_space_stq(as, addr, val, attrs, NULL);
+ }
++
++uint32_t x86_ldl_phys_debug(CPUState *cs, hwaddr addr)
++{
++    uint32_t ret;
++    MemTxAttrs attrs = MEMTXATTRS_UNSPECIFIED_DEBUG;
++    int as_id = cpu_asidx_from_attrs(cs, attrs);
++    struct AddressSpace *as = cpu_get_address_space(cs, as_id);
++
++    physical_memory_debug_ops->read(as, addr, attrs,
++                                    &ret, sizeof(ret));
++
++    return tswap32(ret);
++}
++
++uint64_t x86_ldq_phys_debug(CPUState *cs, hwaddr addr)
++{
++    uint64_t ret;
++    MemTxAttrs attrs = MEMTXATTRS_UNSPECIFIED_DEBUG;
++    int as_id = cpu_asidx_from_attrs(cs, attrs);
++    struct AddressSpace *as = cpu_get_address_space(cs, as_id);
++
++    physical_memory_debug_ops->read(as, addr, attrs,
++                                    &ret, sizeof(ret));
++
++    return tswap64(ret);
++}
+ #endif
+-- 
+2.31.1
+

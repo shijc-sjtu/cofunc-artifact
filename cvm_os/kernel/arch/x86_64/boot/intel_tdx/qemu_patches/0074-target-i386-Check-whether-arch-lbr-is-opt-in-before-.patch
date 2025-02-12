@@ -1,0 +1,47 @@
+From b5b95c3a3e7e4c60557eb0e8f2126dd6b1860558 Mon Sep 17 00:00:00 2001
+From: Yang Weijiang <weijiang.yang@intel.com>
+Date: Thu, 30 Jun 2022 23:49:19 -0400
+Subject: [PATCH 74/99] target/i386: Check whether arch lbr is opt-in before
+ read the MSRs
+
+When lbr-fmt=0x3f is applied in option, user space initializes
+MSR_IA32_PERF_CAPABILITIES.LBR_FMT == 0x3f for VM. If it's not
+supplied, LBR_FMT is set to 0, i.e., arch lbr is not supported
+in VM, in this case, user space access to arch lbr MSRs results
+into KVM check failure and user space VM launch failure.
+Add the format check before access to avoid the issue.
+
+Signed-off-by: Yang Weijiang <weijiang.yang@intel.com>
+---
+ target/i386/kvm/kvm.c | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/target/i386/kvm/kvm.c b/target/i386/kvm/kvm.c
+index 3710b99e36..4a5eb89ddc 100644
+--- a/target/i386/kvm/kvm.c
++++ b/target/i386/kvm/kvm.c
+@@ -3493,7 +3493,9 @@ static int kvm_put_msrs(X86CPU *cpu, int level)
+         }
+ 
+         if (kvm_enabled() && cpu->enable_pmu &&
+-            (env->features[FEAT_7_0_EDX] & CPUID_7_0_EDX_ARCH_LBR)) {
++            (env->features[FEAT_7_0_EDX] & CPUID_7_0_EDX_ARCH_LBR) &&
++            ((env->features[FEAT_PERF_CAPABILITIES] & PERF_CAP_LBR_FMT) ==
++             PERF_CAP_LBR_FMT)) {
+             uint64_t depth;
+             int i, ret;
+ 
+@@ -3956,7 +3958,9 @@ static int kvm_get_msrs(X86CPU *cpu)
+     }
+ 
+     if (kvm_enabled() && cpu->enable_pmu &&
+-        (env->features[FEAT_7_0_EDX] & CPUID_7_0_EDX_ARCH_LBR)) {
++        (env->features[FEAT_7_0_EDX] & CPUID_7_0_EDX_ARCH_LBR) &&
++        ((env->features[FEAT_PERF_CAPABILITIES] & PERF_CAP_LBR_FMT) ==
++         PERF_CAP_LBR_FMT)) {
+         uint64_t depth;
+         int i, ret;
+ 
+-- 
+2.31.1
+

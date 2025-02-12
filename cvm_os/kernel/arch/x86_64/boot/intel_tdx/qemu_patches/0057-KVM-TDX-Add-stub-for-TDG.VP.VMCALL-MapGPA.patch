@@ -1,0 +1,81 @@
+From 50ea051f595869100d80eda3d8a9ecc5280c3a45 Mon Sep 17 00:00:00 2001
+From: Isaku Yamahata <isaku.yamahata@intel.com>
+Date: Tue, 24 May 2022 01:51:28 -0700
+Subject: [PATCH 57/99] KVM: TDX: Add stub for TDG.VP.VMCALL<MapGPA>
+
+Now KVM exits on TDG.VP.VMCALL<MapGPA>, it needs to handle as nop.  With
+UPM, it will be handled.
+
+Signed-off-by: Isaku Yamahata <isaku.yamahata@intel.com>
+---
+ target/i386/kvm/tdx.c | 40 ++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 40 insertions(+)
+
+diff --git a/target/i386/kvm/tdx.c b/target/i386/kvm/tdx.c
+index ec2511954f..79e1e30e57 100644
+--- a/target/i386/kvm/tdx.c
++++ b/target/i386/kvm/tdx.c
+@@ -650,6 +650,7 @@ static void tdx_guest_class_init(ObjectClass *oc, void *data)
+ {
+ }
+ 
++#define TDG_VP_VMCALL_MAP_GPA                           0x10001ULL
+ #define TDG_VP_VMCALL_GET_QUOTE                         0x10002ULL
+ #define TDG_VP_VMCALL_SETUP_EVENT_NOTIFY_INTERRUPT      0x10004ULL
+ 
+@@ -703,6 +704,42 @@ struct tdx_get_quote_header {
+      */
+ };
+ 
++static hwaddr tdx_shared_bit(X86CPU *cpu)
++{
++    return (cpu->phys_bits > 48) ? BIT_ULL(51) : BIT_ULL(47);
++}
++
++static void tdx_handle_map_gpa(X86CPU *cpu, struct kvm_tdx_vmcall *vmcall)
++{
++    hwaddr addr_mask = (1ULL << cpu->phys_bits) - 1;
++    hwaddr shared_bit = tdx_shared_bit(cpu);
++    hwaddr gpa = vmcall->in_r12 & ~shared_bit;
++    bool private = !(vmcall->in_r12 & shared_bit);
++    hwaddr size = vmcall->in_r13;
++    int ret = 0;
++
++    vmcall->status_code = TDG_VP_VMCALL_INVALID_OPERAND;
++
++    if (gpa & ~addr_mask) {
++        return;
++    }
++    if (!QEMU_IS_ALIGNED(gpa, 4096) || !QEMU_IS_ALIGNED(size, 4096)) {
++        vmcall->status_code = TDG_VP_VMCALL_ALIGN_ERROR;
++        return;
++    }
++
++    if (size > 0) {
++        /*
++         * TODO: For private kvm memslot, covert it.  Otherwise nop.
++         * ret = kvm_convert_memory(gpa, size, private);
++         */
++        (void)private;
++    }
++    if (!ret) {
++        vmcall->status_code = TDG_VP_VMCALL_SUCCESS;
++    }
++}
++
+ struct tdx_get_quote_task {
+     uint32_t apic_id;
+     hwaddr gpa;
+@@ -1042,6 +1079,9 @@ static void tdx_handle_vmcall(X86CPU *cpu, struct kvm_tdx_vmcall *vmcall)
+     }
+ 
+     switch (vmcall->subfunction) {
++    case TDG_VP_VMCALL_MAP_GPA:
++        tdx_handle_map_gpa(cpu, vmcall);
++        break;
+     case TDG_VP_VMCALL_GET_QUOTE:
+         tdx_handle_get_quote(cpu, vmcall);
+         break;
+-- 
+2.31.1
+

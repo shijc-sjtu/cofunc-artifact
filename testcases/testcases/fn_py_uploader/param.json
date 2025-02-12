@@ -1,0 +1,8 @@
+{
+    "bucket": {
+        "output": "output"
+    },
+    "object": {
+        "url": "http://hostname:8080/1.4.0.zip"
+    }
+}

@@ -1,0 +1,88 @@
+From ab8cce3bde1f5b751faa9633c126a7fa9848a50c Mon Sep 17 00:00:00 2001
+From: Chao Peng <chao.p.peng@linux.intel.com>
+Date: Thu, 9 Dec 2021 16:39:09 +0800
+Subject: [PATCH 59/99] memfd: Add MFD_INACCESSIBLE flag
+
+The memfd created with this flag cannot read, write or mmap.
+
+Signed-off-by: Chao Peng <chao.p.peng@linux.intel.com>
+---
+ backends/hostmem-memfd.c | 2 +-
+ include/qemu/memfd.h     | 6 +++++-
+ util/memfd.c             | 9 ++++++---
+ 3 files changed, 12 insertions(+), 5 deletions(-)
+
+diff --git a/backends/hostmem-memfd.c b/backends/hostmem-memfd.c
+index 3fc85c3db8..2357e66834 100644
+--- a/backends/hostmem-memfd.c
++++ b/backends/hostmem-memfd.c
+@@ -44,7 +44,7 @@ memfd_backend_memory_alloc(HostMemoryBackend *backend, Error **errp)
+         return;
+     }
+ 
+-    fd = qemu_memfd_create(TYPE_MEMORY_BACKEND_MEMFD, backend->size,
++    fd = qemu_memfd_create(TYPE_MEMORY_BACKEND_MEMFD, backend->size, false,
+                            m->hugetlb, m->hugetlbsize, m->seal ?
+                            F_SEAL_GROW | F_SEAL_SHRINK | F_SEAL_SEAL : 0,
+                            errp);
+diff --git a/include/qemu/memfd.h b/include/qemu/memfd.h
+index 975b6bdb77..05c1ab395d 100644
+--- a/include/qemu/memfd.h
++++ b/include/qemu/memfd.h
+@@ -32,11 +32,15 @@
+ #define MFD_HUGE_SHIFT 26
+ #endif
+ 
++#ifndef MFD_INACCESSIBLE
++#define MFD_INACCESSIBLE 0x0008U
++#endif
++
+ #if defined CONFIG_LINUX && !defined CONFIG_MEMFD
+ int memfd_create(const char *name, unsigned int flags);
+ #endif
+ 
+-int qemu_memfd_create(const char *name, size_t size, bool hugetlb,
++int qemu_memfd_create(const char *name, size_t size, bool private, bool hugetlb,
+                       uint64_t hugetlbsize, unsigned int seals, Error **errp);
+ bool qemu_memfd_alloc_check(void);
+ void *qemu_memfd_alloc(const char *name, size_t size, unsigned int seals,
+diff --git a/util/memfd.c b/util/memfd.c
+index 4a3c07e0be..784362235a 100644
+--- a/util/memfd.c
++++ b/util/memfd.c
+@@ -46,7 +46,7 @@ int memfd_create(const char *name, unsigned int flags)
+ }
+ #endif
+ 
+-int qemu_memfd_create(const char *name, size_t size, bool hugetlb,
++int qemu_memfd_create(const char *name, size_t size, bool private, bool hugetlb,
+                       uint64_t hugetlbsize, unsigned int seals, Error **errp)
+ {
+     int htsize = hugetlbsize ? ctz64(hugetlbsize) : 0;
+@@ -62,6 +62,9 @@ int qemu_memfd_create(const char *name, size_t size, bool hugetlb,
+     int mfd = -1;
+     unsigned int flags = MFD_CLOEXEC;
+ 
++    if (private) {
++        flags |= MFD_INACCESSIBLE;
++    }
+     if (seals) {
+         flags |= MFD_ALLOW_SEALING;
+     }
+@@ -108,11 +111,11 @@ void *qemu_memfd_alloc(const char *name, size_t size, unsigned int seals,
+                        int *fd, Error **errp)
+ {
+     void *ptr;
+-    int mfd = qemu_memfd_create(name, size, false, 0, seals, NULL);
++    int mfd = qemu_memfd_create(name, size, false, false, 0, seals, NULL);
+ 
+     /* some systems have memfd without sealing */
+     if (mfd == -1) {
+-        mfd = qemu_memfd_create(name, size, false, 0, 0, NULL);
++        mfd = qemu_memfd_create(name, size, false, false, 0, 0, NULL);
+     }
+ 
+     if (mfd == -1) {
+-- 
+2.31.1
+

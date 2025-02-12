@@ -1,0 +1,29 @@
+{
+    "context": {
+        "System": {
+        "application": {}
+        }
+    },
+    "request": {
+        "locale": "en-US",
+        "requestId": "amzn1.echo-external.request.b40a87fb-49c3-494b-b965-6df4e46abfac",
+        "timestamp": "2023-10-07T05:47:33Z",
+        "type": "IntentRequest",
+        "intent": {
+        "name": "EnterHomeIntent",
+        "slots": {
+            "password": {
+            "name": "password",
+            "value": "Taylor Swift"
+            }
+        }
+        }
+    },
+    "version": "1.0",
+    "session": {
+        "application": {},
+        "new": true,
+        "sessionId": "SessionID.a49aa2e5-bd98-4941-ae63-586f0b3d583b",
+        "attributes": {}
+    }
+}

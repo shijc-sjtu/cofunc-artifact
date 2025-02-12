@@ -1,0 +1,17 @@
+{
+    "context": { "System": { "application": {} } },
+    "IP": "hostname",
+    "PORT": 9090,
+    "request": {
+        "locale": "en-US",
+        "requestId": "amzn1.echo-external.request.86758e10-78e5-4407-85e3-fffeb85ca629",
+        "timestamp": "2023-11-10T07:16:00Z",
+        "type": "LaunchRequest"
+    },
+    "version": "1.0",
+    "session": {
+        "application": { "applicationId": null },
+        "new": true,
+        "sessionId": "SessionID.74ad8dcb-d488-4ac0-9bcf-7899bc785c6a"
+    }
+}

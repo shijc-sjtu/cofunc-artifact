@@ -1,0 +1,31 @@
+From 4bc7c657a0810e96f34e541495c3edc0373a5047 Mon Sep 17 00:00:00 2001
+From: Isaku Yamahata <isaku.yamahata@intel.com>
+Date: Tue, 16 Jun 2020 03:32:16 -0700
+Subject: [PATCH 39/99] i386/tdx: Skip KVM_X86_SETUP_MCE for TDX VMs
+
+Despite advertising MCE support to TD guest, TDX module doesn't support
+injecting #MCs into the guest. All of the associated setup is thus
+rejected by KVM.
+
+Signed-off-by: Isaku Yamahata <isaku.yamahata@intel.com>
+---
+ target/i386/kvm/kvm.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/target/i386/kvm/kvm.c b/target/i386/kvm/kvm.c
+index 95afbbac71..06de14b5ba 100644
+--- a/target/i386/kvm/kvm.c
++++ b/target/i386/kvm/kvm.c
+@@ -2076,7 +2076,8 @@ int kvm_arch_init_vcpu(CPUState *cs)
+     if (((env->cpuid_version >> 8)&0xF) >= 6
+         && (env->features[FEAT_1_EDX] & (CPUID_MCE | CPUID_MCA)) ==
+            (CPUID_MCE | CPUID_MCA)
+-        && kvm_check_extension(cs->kvm_state, KVM_CAP_MCE) > 0) {
++        && kvm_check_extension(cs->kvm_state, KVM_CAP_MCE) > 0
++        && !is_tdx_vm()) {
+         uint64_t mcg_cap, unsupported_caps;
+         int banks;
+         int ret;
+-- 
+2.31.1
+

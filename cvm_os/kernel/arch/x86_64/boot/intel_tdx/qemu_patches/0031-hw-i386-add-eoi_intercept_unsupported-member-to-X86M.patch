@@ -1,0 +1,60 @@
+From 250e47e4e63343ae8c3356610270ea22a40fa9a7 Mon Sep 17 00:00:00 2001
+From: Xiaoyao Li <xiaoyao.li@intel.com>
+Date: Mon, 21 Feb 2022 20:35:58 +0800
+Subject: [PATCH 31/99] hw/i386: add eoi_intercept_unsupported member to
+ X86MachineState
+
+Add a new bool member, eoi_intercept_unsupported, to X86MachineState
+with default value false. Set true for TDX VM.
+
+Inability to intercept eoi causes impossibility to emulate level
+triggered interrupt to be re-injected when level is still kept active.
+which affects interrupt controller emulation.
+
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+---
+ hw/i386/x86.c         | 1 +
+ include/hw/i386/x86.h | 1 +
+ target/i386/kvm/tdx.c | 2 ++
+ 3 files changed, 4 insertions(+)
+
+diff --git a/hw/i386/x86.c b/hw/i386/x86.c
+index 32a1058385..cd4bf976a2 100644
+--- a/hw/i386/x86.c
++++ b/hw/i386/x86.c
+@@ -1381,6 +1381,7 @@ static void x86_machine_initfn(Object *obj)
+     x86ms->oem_id = g_strndup(ACPI_BUILD_APPNAME6, 6);
+     x86ms->oem_table_id = g_strndup(ACPI_BUILD_APPNAME8, 8);
+     x86ms->bus_lock_ratelimit = 0;
++    x86ms->eoi_intercept_unsupported = false;
+ }
+ 
+ static void x86_machine_class_init(ObjectClass *oc, void *data)
+diff --git a/include/hw/i386/x86.h b/include/hw/i386/x86.h
+index 9089bdd99c..5bf91dd934 100644
+--- a/include/hw/i386/x86.h
++++ b/include/hw/i386/x86.h
+@@ -58,6 +58,7 @@ struct X86MachineState {
+ 
+     /* CPU and apic information: */
+     bool apic_xrupt_override;
++    bool eoi_intercept_unsupported;
+     unsigned pci_irq_mask;
+     unsigned apic_id_limit;
+     uint16_t boot_cpus;
+diff --git a/target/i386/kvm/tdx.c b/target/i386/kvm/tdx.c
+index 0ca5ab104b..d35de9915f 100644
+--- a/target/i386/kvm/tdx.c
++++ b/target/i386/kvm/tdx.c
+@@ -355,6 +355,8 @@ int tdx_kvm_init(MachineState *ms, Error **errp)
+         return -EINVAL;
+     }
+ 
++    x86ms->eoi_intercept_unsupported = true;
++
+     if (!tdx_caps) {
+         get_tdx_capabilities();
+     }
+-- 
+2.31.1
+

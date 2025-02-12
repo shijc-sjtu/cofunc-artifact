@@ -1,0 +1,51 @@
+From 3891e9f20d59c1b0407a85b699ecdcde98287e30 Mon Sep 17 00:00:00 2001
+From: Xiaoyao Li <xiaoyao.li@intel.com>
+Date: Mon, 20 Jun 2022 16:01:48 +0800
+Subject: [PATCH 69/99] [DEBUG] tdx: print tdx-caps
+
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+---
+ target/i386/kvm/tdx.c | 20 ++++++++++++++++++++
+ 1 file changed, 20 insertions(+)
+
+diff --git a/target/i386/kvm/tdx.c b/target/i386/kvm/tdx.c
+index 02e2000f3b..809e347630 100644
+--- a/target/i386/kvm/tdx.c
++++ b/target/i386/kvm/tdx.c
+@@ -370,6 +370,24 @@ static Notifier tdx_machine_done_notify = {
+     .notify = tdx_finalize_vm,
+ };
+ 
++static void pr_tdx_capabilities(void)
++{
++	int i;
++	struct kvm_tdx_cpuid_config *cpuid_config;
++
++	printf("tdx_caps->attrs_fixed0: 0x%llx\n", tdx_caps->attrs_fixed0);
++	printf("tdx_caps->attrs_fixed1: 0x%llx\n", tdx_caps->attrs_fixed1);
++	printf("tdx_caps->xfam_fixed0: 0x%llx\n", tdx_caps->xfam_fixed0);
++	printf("tdx_caps->xfam_fixed1: 0x%llx\n", tdx_caps->xfam_fixed1);
++
++	for (i = 0; i < tdx_caps->nr_cpuid_configs; i++) {
++		cpuid_config = &tdx_caps->cpuid_configs[i];
++		printf("cpuid_config[%d]: 0x%x_0x%x eax 0x%x ebx 0x%x ecx 0x%x edx 0x%x\n",
++				i, cpuid_config->leaf, cpuid_config->sub_leaf,
++				cpuid_config->eax, cpuid_config->ebx, cpuid_config->ecx, cpuid_config->edx);
++	}
++}
++
+ int tdx_kvm_init(MachineState *ms, Error **errp)
+ {
+     X86MachineState *x86ms = X86_MACHINE(ms);
+@@ -396,6 +414,8 @@ int tdx_kvm_init(MachineState *ms, Error **errp)
+         get_tdx_capabilities();
+     }
+ 
++    pr_tdx_capabilities();
++
+     /*
+      * Set kvm_readonly_mem_allowed to false, because TDX only supports readonly
+      * memory for shared memory but not for private memory. Besides, whether a
+-- 
+2.31.1
+

@@ -1,0 +1,59 @@
+From 5adf2de94dcb241269bc3b1d5634225f9ab32baf Mon Sep 17 00:00:00 2001
+From: Chao Peng <chao.p.peng@linux.intel.com>
+Date: Wed, 24 Nov 2021 17:45:19 +0800
+Subject: [PATCH 64/99] kvm: handle KVM_EXIT_MEM_MAP_PRIVATE/SHARED error
+
+This two types of memory errors are handled as memory conversion on the
+target RAMBlock.
+
+Signed-off-by: Chao Peng <chao.p.peng@linux.intel.com>
+---
+ accel/kvm/kvm-all.c | 25 +++++++++++++++++++++++++
+ 1 file changed, 25 insertions(+)
+
+diff --git a/accel/kvm/kvm-all.c b/accel/kvm/kvm-all.c
+index 69350d6b4d..553a168cb9 100644
+--- a/accel/kvm/kvm-all.c
++++ b/accel/kvm/kvm-all.c
+@@ -2879,6 +2879,26 @@ static void kvm_eat_signals(CPUState *cpu)
+     } while (sigismember(&chkset, SIG_IPI));
+ }
+ 
++static int kvm_convert_memory(hwaddr start, hwaddr size, bool shared_to_private)
++{
++    MemoryRegionSection section;
++    void *addr;
++    RAMBlock *rb;
++    ram_addr_t offset;
++    int ret;
++
++    section = memory_region_find(get_system_memory(), start, size);
++    if (section.mr) {
++        addr = memory_region_get_ram_ptr(section.mr) +
++               section.offset_within_region;
++        rb = qemu_ram_block_from_host(addr, false, &offset);
++        ret = ram_block_convert_range(rb, offset, size, shared_to_private);
++        memory_region_unref(section.mr);
++        return ret;
++    }
++    return -1;
++}
++
+ int kvm_cpu_exec(CPUState *cpu)
+ {
+     struct kvm_run *run = cpu->kvm_run;
+@@ -3026,6 +3046,11 @@ int kvm_cpu_exec(CPUState *cpu)
+                 break;
+             }
+             break;
++        case KVM_EXIT_MEMORY_FAULT:
++                 ret = kvm_convert_memory(run->memory.gpa,
++                                          run->memory.size,
++                                          run->memory.flags & KVM_MEMORY_EXIT_FLAG_PRIVATE);
++            break;
+         default:
+             DPRINTF("kvm_arch_handle_exit\n");
+             ret = kvm_arch_handle_exit(cpu, run);
+-- 
+2.31.1
+

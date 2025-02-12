@@ -1,0 +1,73 @@
+diff --git a/accel/kvm/kvm-all.c b/accel/kvm/kvm-all.c
+index 2e2aaea3f1..002c881634 100644
+--- a/accel/kvm/kvm-all.c
++++ b/accel/kvm/kvm-all.c
+@@ -45,6 +45,7 @@
+ #include "qemu/guest-random.h"
+ #include "sysemu/hw_accel.h"
+ #include "kvm-cpus.h"
++#include "split-container.h"
+ 
+ #include "hw/boards.h"
+ #include "monitor/stats.h"
+@@ -2438,7 +2439,7 @@ static int kvm_init(MachineState *ms)
+     }
+ 
+     do {
+-        ret = kvm_ioctl(s, KVM_CREATE_VM, type);
++        ret = kvm_ioctl(s, KVM_CREATE_VM, type | KVM_VM_TYPE_SC_MASK);
+     } while (ret == -EINTR);
+ 
+     if (ret < 0) {
+diff --git a/chardev/char-mux.c b/chardev/char-mux.c
+index ee2d47b20d..754285a734 100644
+--- a/chardev/char-mux.c
++++ b/chardev/char-mux.c
+@@ -159,6 +159,7 @@ static int mux_proc_byte(Chardev *chr, MuxChardev *d, int ch)
+                  const char *term =  "QEMU: Terminated\n\r";
+                  qemu_chr_write_all(chr, (uint8_t *)term, strlen(term));
+                  qmp_quit(NULL);
++                 exit(0);
+                  break;
+             }
+         case 's':
+diff --git a/include/split-container.h b/include/split-container.h
+new file mode 100644
+index 0000000000..cbbf6190dd
+--- /dev/null
++++ b/include/split-container.h
+@@ -0,0 +1,8 @@
++#pragma once
++
++#define TDG_VP_VMCALL_SC_VCPU_IDLE     0x10010
++#define TDG_VP_VMCALL_SC_REQUEST       0x10011
++
++#define KVM_VM_TYPE_SC_MASK     0x80000000U
++
++#define SC_REQ_DEBUG_PUTC   1
+diff --git a/target/i386/kvm/tdx.c b/target/i386/kvm/tdx.c
+index 249fa36bb4..ece1b1e0aa 100644
+--- a/target/i386/kvm/tdx.c
++++ b/target/i386/kvm/tdx.c
+@@ -28,6 +28,7 @@
+ #include "hw/i386/tdvf-hob.h"
+ #include "kvm_i386.h"
+ #include "tdx.h"
++#include "split-container.h"
+ 
+ #define TDX_SUPPORTED_KVM_FEATURES  ((1ULL << KVM_FEATURE_NOP_IO_DELAY) | \
+                                      (1ULL << KVM_FEATURE_PV_UNHALT) | \
+@@ -1177,6 +1178,13 @@ static void tdx_handle_vmcall(X86CPU *cpu, struct kvm_tdx_vmcall *vmcall)
+     case TDG_VP_VMCALL_SETUP_EVENT_NOTIFY_INTERRUPT:
+         tdx_handle_setup_event_notify_interrupt(cpu, vmcall);
+         break;
++    case TDG_VP_VMCALL_SC_VCPU_IDLE:
++        pthread_exit(0);
++        break;
++    case TDG_VP_VMCALL_SC_REQUEST:
++        assert(vmcall->in_r12 == SC_REQ_DEBUG_PUTC);
++        putchar(vmcall->in_r13);
++        break;
+     default:
+         warn_report("unknown tdg.vp.vmcall type 0x%llx subfunction 0x%llx",
+                     vmcall->type, vmcall->subfunction);

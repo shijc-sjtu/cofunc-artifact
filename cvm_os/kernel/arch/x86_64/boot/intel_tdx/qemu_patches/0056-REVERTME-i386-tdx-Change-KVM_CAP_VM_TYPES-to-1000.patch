@@ -1,0 +1,28 @@
+From 4ecb586543364b05096d05dc853ef75af0dbc192 Mon Sep 17 00:00:00 2001
+From: Xiaoyao Li <xiaoyao.li@intel.com>
+Date: Fri, 6 May 2022 16:13:23 +0800
+Subject: [PATCH 56/99] [REVERTME] i386/tdx: Change KVM_CAP_VM_TYPES to 1000
+
+Align with kvm-upstream-workaround branch.
+
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+---
+ linux-headers/linux/kvm.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/linux-headers/linux/kvm.h b/linux-headers/linux/kvm.h
+index 5dc2086971..de6d86f14c 100644
+--- a/linux-headers/linux/kvm.h
++++ b/linux-headers/linux/kvm.h
+@@ -1209,7 +1209,7 @@ struct kvm_ppc_resize_hpt {
+ /* #define KVM_CAP_VM_TSC_CONTROL 214 */
+ #define KVM_CAP_SYSTEM_EVENT_DATA 215
+ 
+-#define KVM_CAP_VM_TYPES 216
++#define KVM_CAP_VM_TYPES 1000
+ 
+ #ifdef KVM_CAP_IRQ_ROUTING
+ 
+-- 
+2.31.1
+

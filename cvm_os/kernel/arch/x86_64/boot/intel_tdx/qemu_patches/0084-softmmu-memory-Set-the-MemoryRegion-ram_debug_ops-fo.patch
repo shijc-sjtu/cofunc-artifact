@@ -1,0 +1,149 @@
+From 638a3093a96d7a6e1748cbcd98a6d748f65ea744 Mon Sep 17 00:00:00 2001
+From: Yuan Yao <yuan.yao@intel.com>
+Date: Thu, 1 Jul 2021 09:07:01 +0800
+Subject: [PATCH 84/99] softmmu/memory: Set the MemoryRegion::ram_debug_ops for
+ encrypted guest
+
+Set the RAM::debug_ops for INTEL TDX guest, AMD SEV guest
+supporting can be added without big change in future.
+
+Below functions are patched to cover different memory
+backends:
+
+memory_region_init_ram_flags_nomigrate()
+memory_region_init_resizeable_ram()
+memory_region_init_ram_from_file()
+memory_region_init_ram_from_fd()
+memory_region_init_ram_ptr()
+memory_region_init_ram_device_ptr()
+
+Signed-off-by: Yuan Yao <yuan.yao@intel.com>
+---
+ include/sysemu/tdx.h  |  6 ++++++
+ softmmu/memory.c      | 23 +++++++++++++++++++++++
+ target/i386/kvm/tdx.c |  9 +++++++++
+ 3 files changed, 38 insertions(+)
+ create mode 100644 include/sysemu/tdx.h
+
+diff --git a/include/sysemu/tdx.h b/include/sysemu/tdx.h
+new file mode 100644
+index 0000000000..66883f7422
+--- /dev/null
++++ b/include/sysemu/tdx.h
+@@ -0,0 +1,6 @@
++#ifndef QEMU_TDX_H
++#define QEMU_TDX_H
++
++bool tdx_debug_enabled(void);
++
++#endif
+diff --git a/softmmu/memory.c b/softmmu/memory.c
+index 79692ecd09..2d1dd4b924 100644
+--- a/softmmu/memory.c
++++ b/softmmu/memory.c
+@@ -28,6 +28,7 @@
+ #include "exec/memory-internal.h"
+ #include "exec/ram_addr.h"
+ #include "sysemu/kvm.h"
++#include "sysemu/tdx.h"
+ #include "sysemu/runstate.h"
+ #include "sysemu/tcg.h"
+ #include "qemu/accel.h"
+@@ -1548,6 +1549,16 @@ void memory_region_init_ram_nomigrate(MemoryRegion *mr,
+     memory_region_init_ram_flags_nomigrate(mr, owner, name, size, 0, errp);
+ }
+ 
++static void memory_region_init_ram_debug_ops(MemoryRegion *mr)
++{
++    if (!mr || !mr->ram)
++        return;
++
++    if (tdx_debug_enabled()) {
++        kvm_set_memory_region_debug_ops(NULL, mr);
++    }
++}
++
+ void memory_region_init_ram_flags_nomigrate(MemoryRegion *mr,
+                                             Object *owner,
+                                             const char *name,
+@@ -1566,6 +1577,8 @@ void memory_region_init_ram_flags_nomigrate(MemoryRegion *mr,
+         object_unparent(OBJECT(mr));
+         error_propagate(errp, err);
+     }
++
++    memory_region_init_ram_debug_ops(mr);
+ }
+ 
+ void memory_region_init_resizeable_ram(MemoryRegion *mr,
+@@ -1590,6 +1603,8 @@ void memory_region_init_resizeable_ram(MemoryRegion *mr,
+         object_unparent(OBJECT(mr));
+         error_propagate(errp, err);
+     }
++
++    memory_region_init_ram_debug_ops(mr);
+ }
+ 
+ #ifdef CONFIG_POSIX
+@@ -1617,6 +1632,8 @@ void memory_region_init_ram_from_file(MemoryRegion *mr,
+         object_unparent(OBJECT(mr));
+         error_propagate(errp, err);
+     }
++
++    memory_region_init_ram_debug_ops(mr);
+ }
+ 
+ void memory_region_init_ram_from_fd(MemoryRegion *mr,
+@@ -1640,6 +1657,8 @@ void memory_region_init_ram_from_fd(MemoryRegion *mr,
+         object_unparent(OBJECT(mr));
+         error_propagate(errp, err);
+     }
++
++    memory_region_init_ram_debug_ops(mr);
+ }
+ 
+ void memory_region_set_private_fd(MemoryRegion *mr, int fd)
+@@ -1665,6 +1684,8 @@ void memory_region_init_ram_ptr(MemoryRegion *mr,
+     /* qemu_ram_alloc_from_ptr cannot fail with ptr != NULL.  */
+     assert(ptr != NULL);
+     mr->ram_block = qemu_ram_alloc_from_ptr(size, ptr, mr, &error_fatal);
++
++    memory_region_init_ram_debug_ops(mr);
+ }
+ 
+ void memory_region_init_ram_device_ptr(MemoryRegion *mr,
+@@ -1684,6 +1705,8 @@ void memory_region_init_ram_device_ptr(MemoryRegion *mr,
+     /* qemu_ram_alloc_from_ptr cannot fail with ptr != NULL.  */
+     assert(ptr != NULL);
+     mr->ram_block = qemu_ram_alloc_from_ptr(size, ptr, mr, &error_fatal);
++
++    memory_region_init_ram_debug_ops(mr);
+ }
+ 
+ void memory_region_init_alias(MemoryRegion *mr,
+diff --git a/target/i386/kvm/tdx.c b/target/i386/kvm/tdx.c
+index 209356c494..b000ddb615 100644
+--- a/target/i386/kvm/tdx.c
++++ b/target/i386/kvm/tdx.c
+@@ -18,6 +18,7 @@
+ #include "standard-headers/asm-x86/kvm_para.h"
+ #include "sysemu/kvm.h"
+ #include "sysemu/sysemu.h"
++#include "sysemu/tdx.h"
+ 
+ #include "exec/address-spaces.h"
+ #include "hw/i386/apic_internal.h"
+@@ -1128,3 +1129,11 @@ void tdx_handle_exit(X86CPU *cpu, struct kvm_tdx_exit *tdx_exit)
+         break;
+     }
+ }
++
++bool tdx_debug_enabled(void)
++{
++    if (!is_tdx_vm())
++        return false;
++
++    return tdx_guest->attributes & TDX_TD_ATTRIBUTES_DEBUG;
++}
+-- 
+2.31.1
+

@@ -1,0 +1,145 @@
+From 761fc859f36dd06cf8668cdce3ff26aef5af0591 Mon Sep 17 00:00:00 2001
+From: Yuan Yao <yuan.yao@intel.com>
+Date: Thu, 1 Jul 2021 09:07:00 +0800
+Subject: [PATCH 83/99] i386/kvm: Implement the common
+ MemoryRegion::ram_debug_ops for encrypted guests
+
+The new functions are added into target/i386/kvm/kvm.c as
+common functions to support encrypted guest for KVM on x86,
+enable them for INTEL TDX guests.
+
+Signed-off-by: Yuan Yao <yuan.yao@intel.com>
+---
+ include/sysemu/kvm.h  |  2 +
+ target/i386/kvm/kvm.c | 89 +++++++++++++++++++++++++++++++++++++++++++
+ target/i386/kvm/tdx.c |  6 +++
+ 3 files changed, 97 insertions(+)
+
+diff --git a/include/sysemu/kvm.h b/include/sysemu/kvm.h
+index 1d4b4a26ae..702555c492 100644
+--- a/include/sysemu/kvm.h
++++ b/include/sysemu/kvm.h
+@@ -590,4 +590,6 @@ void kvm_setup_set_memory_region_debug_ops(struct KVMState *s,
+                                            set_memory_region_debug_ops new_ops);
+ void kvm_set_memory_region_debug_ops(void *handle, MemoryRegion *mr);
+ 
++void kvm_encrypted_guest_set_memory_region_debug_ops(void *handle,
++                                                     MemoryRegion *mr);
+ #endif
+diff --git a/target/i386/kvm/kvm.c b/target/i386/kvm/kvm.c
+index d9f5fa7697..787f252b99 100644
+--- a/target/i386/kvm/kvm.c
++++ b/target/i386/kvm/kvm.c
+@@ -5634,3 +5634,92 @@ void kvm_request_xsave_components(X86CPU *cpu, uint64_t mask)
+         mask &= ~BIT_ULL(bit);
+     }
+ }
++
++static int kvm_encrypted_guest_read_memory(uint8_t *dest,
++                                           const uint8_t *hva_src, hwaddr gpa_src,
++                                           uint32_t len, MemTxAttrs attrs)
++{
++    int ret;
++    uint64_t completed_len = 0;
++    struct kvm_rw_memory rw;
++
++    if (is_tdx_vm()) {
++        rw.addr = gpa_src;
++    } else if (sev_es_enabled()) {
++        rw.addr = (__u64)hva_src;
++    } else {
++        return -EINVAL;
++    }
++
++    rw.ubuf = (__u64)dest;
++    rw.len = len;
++    for(;;) {
++        ret = kvm_vm_ioctl(kvm_state, KVM_MEMORY_ENCRYPT_READ_MEMORY, &rw);
++        if (ret >= 0)
++            break;
++
++        completed_len += rw.len;
++        rw.addr += rw.len;
++        rw.ubuf += rw.len;
++        rw.len = len - completed_len;
++
++        if (ret != -EINTR)
++            break;
++    }
++
++    if (ret < 0) {
++        uint64_t fail_len;
++
++        fail_len = completed_len < len ? len - completed_len : 0;
++        if (fail_len) {
++            memset(dest + completed_len, 0, fail_len);
++        }
++    }
++
++    return ret;
++}
++
++static int kvm_encrypted_guest_write_memory(uint8_t *hva_dest, hwaddr gpa_dest,
++                                            const uint8_t *src,
++                                            uint32_t len, MemTxAttrs attrs)
++{
++    int ret;
++    uint64_t completed_len = 0;
++    struct kvm_rw_memory rw;
++
++    if (is_tdx_vm()) {
++        rw.addr = gpa_dest;
++    } else if (sev_es_enabled()){
++        rw.addr = (__u64)hva_dest;
++    } else {
++        return -EINVAL;
++    }
++
++    rw.ubuf = (__u64)src;
++    rw.len = len;
++    for(;;) {
++        ret = kvm_vm_ioctl(kvm_state, KVM_MEMORY_ENCRYPT_WRITE_MEMORY, &rw);
++        if (ret >= 0)
++            break;
++        if (ret != -EINTR)
++            break;
++
++        completed_len += rw.len;
++        rw.addr += rw.len;
++        rw.ubuf += rw.len;
++        rw.len = len - completed_len;
++    }
++
++    return ret;
++}
++
++static MemoryRegionRAMReadWriteOps kvm_encrypted_guest_mr_debug_ops = {
++    .read = kvm_encrypted_guest_read_memory,
++    .write = kvm_encrypted_guest_write_memory,
++};
++
++void kvm_encrypted_guest_set_memory_region_debug_ops(void *handle,
++                                                     MemoryRegion *mr)
++{
++    memory_region_set_ram_debug_ops(mr, &kvm_encrypted_guest_mr_debug_ops);
++}
+diff --git a/target/i386/kvm/tdx.c b/target/i386/kvm/tdx.c
+index 809e347630..209356c494 100644
+--- a/target/i386/kvm/tdx.c
++++ b/target/i386/kvm/tdx.c
+@@ -429,6 +429,12 @@ int tdx_kvm_init(MachineState *ms, Error **errp)
+ 
+     tdx_guest = tdx;
+ 
++    if ((tdx->attributes & TDX_TD_ATTRIBUTES_DEBUG) &&
++        kvm_vm_check_extension(kvm_state, KVM_CAP_ENCRYPT_MEMORY_DEBUG)) {
++        kvm_setup_set_memory_region_debug_ops(kvm_state,
++                                              kvm_encrypted_guest_set_memory_region_debug_ops);
++    }
++
+     return 0;
+ }
+ 
+-- 
+2.31.1
+

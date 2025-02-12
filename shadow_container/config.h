@@ -1,0 +1,1 @@
+#define CONFIG_PLAT_AMD_SEV

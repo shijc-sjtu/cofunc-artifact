@@ -1,0 +1,82 @@
+From e8bcf16d3133f53e9e68d3854ff0a9264f9810cd Mon Sep 17 00:00:00 2001
+From: Chenyi Qiang <chenyi.qiang@intel.com>
+Date: Fri, 15 Apr 2022 17:59:18 +0800
+Subject: [PATCH 75/99] linux-header: update linux header
+
+This linux-header update is only a reference to include some definitions
+related to notify VM exit.
+
+Signed-off-by: Chenyi Qiang <chenyi.qiang@intel.com>
+---
+ linux-headers/asm-x86/kvm.h |  6 +++++-
+ linux-headers/linux/kvm.h   | 11 +++++++++++
+ 2 files changed, 16 insertions(+), 1 deletion(-)
+
+diff --git a/linux-headers/asm-x86/kvm.h b/linux-headers/asm-x86/kvm.h
+index a5433cc71f..701bf234eb 100644
+--- a/linux-headers/asm-x86/kvm.h
++++ b/linux-headers/asm-x86/kvm.h
+@@ -325,6 +325,7 @@ struct kvm_reinject_control {
+ #define KVM_VCPUEVENT_VALID_SHADOW	0x00000004
+ #define KVM_VCPUEVENT_VALID_SMM		0x00000008
+ #define KVM_VCPUEVENT_VALID_PAYLOAD	0x00000010
++#define KVM_VCPUEVENT_VALID_TRIPLE_FAULT	0x00000020
+ 
+ /* Interrupt shadow states */
+ #define KVM_X86_SHADOW_INT_MOV_SS	0x01
+@@ -359,7 +360,10 @@ struct kvm_vcpu_events {
+ 		__u8 smm_inside_nmi;
+ 		__u8 latched_init;
+ 	} smi;
+-	__u8 reserved[27];
++	struct {
++		__u8 pending;
++	} triple_fault;
++	__u8 reserved[26];
+ 	__u8 exception_has_payload;
+ 	__u64 exception_payload;
+ };
+diff --git a/linux-headers/linux/kvm.h b/linux-headers/linux/kvm.h
+index 62c722c9f0..adcb051c21 100644
+--- a/linux-headers/linux/kvm.h
++++ b/linux-headers/linux/kvm.h
+@@ -334,6 +334,7 @@ struct kvm_tdx_exit {
+ #define KVM_EXIT_X86_BUS_LOCK     33
+ #define KVM_EXIT_XEN              34
+ #define KVM_EXIT_RISCV_SBI        35
++#define KVM_EXIT_NOTIFY           36
+ /* WORKAROUND to avoid conflict with upstream. */
+ #define KVM_EXIT_TDX              50
+ #define KVM_EXIT_MEMORY_FAULT     100
+@@ -571,6 +572,11 @@ struct kvm_run {
+ 		} memory;
+ 		/* KVM_EXIT_TDX_VMCALL */
+ 		struct kvm_tdx_exit tdx;
++		/* KVM_EXIT_NOTIFY */
++		struct {
++#define KVM_NOTIFY_CONTEXT_INVALID	(1 << 0)
++			__u32 flags;
++		} notify;
+ 		/* Fix the size of the union. */
+ 		char padding[256];
+ 	};
+@@ -1230,6 +1236,8 @@ struct kvm_ppc_resize_hpt {
+ #define KVM_CAP_DISABLE_QUIRKS2 213
+ #define KVM_CAP_VM_TSC_CONTROL 214
+ #define KVM_CAP_SYSTEM_EVENT_DATA 215
++#define KVM_CAP_X86_TRIPLE_FAULT_EVENT 218
++#define KVM_CAP_X86_NOTIFY_VMEXIT 219
+ #define KVM_CAP_VM_TYPES 1000
+ 
+ #ifdef KVM_CAP_IRQ_ROUTING
+@@ -2192,4 +2200,7 @@ struct kvm_stats_desc {
+ /* Available with KVM_CAP_XSAVE2 */
+ #define KVM_GET_XSAVE2		  _IOR(KVMIO,  0xcf, struct kvm_xsave)
+ 
++#define KVM_X86_NOTIFY_VMEXIT_ENABLED		(1ULL << 0)
++#define KVM_X86_NOTIFY_VMEXIT_USER		(1ULL << 1)
++
+ #endif /* __LINUX_KVM_H */
+-- 
+2.31.1
+

@@ -1,0 +1,89 @@
+From 13ec292bc6664908393b53d4c83a64947204ca55 Mon Sep 17 00:00:00 2001
+From: Isaku Yamahata <isaku.yamahata@intel.com>
+Date: Tue, 12 Apr 2022 16:46:31 -0700
+Subject: [PATCH 67/99] KVM: TDX: handle TDG.VP.VMCALL<MapGPA> hypercall
+
+MapGPA is a hypercall to convert GPA from/to private GPA to/from shared GPA.
+As the conversion function is already implemented as kvm_convert_memory,
+wire it to TDX hypercall exit.
+
+Signed-off-by: Isaku Yamahata <isaku.yamahata@intel.com>
+---
+ accel/kvm/kvm-all.c   | 23 +++++++++++++----------
+ include/sysemu/kvm.h  |  1 +
+ target/i386/kvm/tdx.c |  6 +-----
+ 3 files changed, 15 insertions(+), 15 deletions(-)
+
+diff --git a/accel/kvm/kvm-all.c b/accel/kvm/kvm-all.c
+index 62d6c42976..befdd4fa7b 100644
+--- a/accel/kvm/kvm-all.c
++++ b/accel/kvm/kvm-all.c
+@@ -2883,7 +2883,7 @@ static void kvm_eat_signals(CPUState *cpu)
+     } while (sigismember(&chkset, SIG_IPI));
+ }
+ 
+-static int kvm_convert_memory(hwaddr start, hwaddr size, bool shared_to_private)
++int kvm_convert_memory(hwaddr start, hwaddr size, bool shared_to_private)
+ {
+     MemoryRegionSection section;
+     void *addr;
+@@ -2896,17 +2896,20 @@ static int kvm_convert_memory(hwaddr start, hwaddr size, bool shared_to_private)
+         return -1;
+     }
+ 
+-    if (object_dynamic_cast(section.mr->owner,
+-                            TYPE_MEMORY_BACKEND_MEMFD_PRIVATE)) {
+-        addr = memory_region_get_ram_ptr(section.mr) +
+-            section.offset_within_region;
+-        rb = qemu_ram_block_from_host(addr, false, &offset);
+-        ret = ram_block_convert_range(rb, offset, size, shared_to_private);
+-    } else {
+-        warn_report("Unkonwn start 0x%"HWADDR_PRIx" size 0x%"HWADDR_PRIx" shared_to_private %d",
+-                    start, size, shared_to_private);
++    if (!object_dynamic_cast(section.mr->owner,
++                             TYPE_MEMORY_BACKEND_MEMFD_PRIVATE)) {
++        /*
++         * just nop: Non-private memfd case, KVM kernel takes care of the
++         * conversion. qemu has to do nothing for now.
++         */
++        memory_region_unref(section.mr);
++        return 0;
+     }
+ 
++    addr = memory_region_get_ram_ptr(section.mr) +
++        section.offset_within_region;
++    rb = qemu_ram_block_from_host(addr, false, &offset);
++    ret = ram_block_convert_range(rb, offset, size, shared_to_private);
+     memory_region_unref(section.mr);
+     return ret;
+ }
+diff --git a/include/sysemu/kvm.h b/include/sysemu/kvm.h
+index 0e94031ab7..7d8c17f4ae 100644
+--- a/include/sysemu/kvm.h
++++ b/include/sysemu/kvm.h
+@@ -583,4 +583,5 @@ bool kvm_cpu_check_are_resettable(void);
+ bool kvm_arch_cpu_check_are_resettable(void);
+ 
+ bool kvm_dirty_ring_enabled(void);
++int kvm_convert_memory(hwaddr start, hwaddr size, bool shared_to_private);
+ #endif
+diff --git a/target/i386/kvm/tdx.c b/target/i386/kvm/tdx.c
+index 79e1e30e57..02e2000f3b 100644
+--- a/target/i386/kvm/tdx.c
++++ b/target/i386/kvm/tdx.c
+@@ -729,11 +729,7 @@ static void tdx_handle_map_gpa(X86CPU *cpu, struct kvm_tdx_vmcall *vmcall)
+     }
+ 
+     if (size > 0) {
+-        /*
+-         * TODO: For private kvm memslot, covert it.  Otherwise nop.
+-         * ret = kvm_convert_memory(gpa, size, private);
+-         */
+-        (void)private;
++        ret = kvm_convert_memory(gpa, size, private);
+     }
+     if (!ret) {
+         vmcall->status_code = TDG_VP_VMCALL_SUCCESS;
+-- 
+2.31.1
+

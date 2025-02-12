@@ -1,0 +1,354 @@
+diff --git a/arch/x86/kvm/Makefile b/arch/x86/kvm/Makefile
+index 80e3fe184..3c87af23d 100644
+--- a/arch/x86/kvm/Makefile
++++ b/arch/x86/kvm/Makefile
+@@ -12,7 +12,7 @@ include $(srctree)/virt/kvm/Makefile.kvm
+ kvm-y			+= x86.o emulate.o i8259.o irq.o lapic.o \
+ 			   i8254.o ioapic.o irq_comm.o cpuid.o pmu.o mtrr.o \
+ 			   hyperv.o debugfs.o mmu/mmu.o mmu/page_track.o \
+-			   mmu/spte.o
++			   mmu/spte.o split_container.o
+ 
+ ifdef CONFIG_HYPERV
+ kvm-y			+= kvm_onhyperv.o
+@@ -27,7 +27,7 @@ kvm-intel-y		+= vmx/vmx.o vmx/vmenter.o vmx/pmu_intel.o vmx/vmcs12.o \
+ kvm-intel-$(CONFIG_X86_SGX_KVM)	+= vmx/sgx.o
+ 
+ kvm-amd-y		+= svm/svm.o svm/vmenter.o svm/pmu.o svm/nested.o svm/avic.o \
+-			   svm/sev.o svm/hyperv.o
++			   svm/sev.o svm/hyperv.o split_container.o
+ 
+ ifdef CONFIG_HYPERV
+ kvm-amd-y		+= svm/svm_onhyperv.o
+diff --git a/arch/x86/kvm/mmu/mmu.c b/arch/x86/kvm/mmu/mmu.c
+index d7847af3e..460af0f45 100644
+--- a/arch/x86/kvm/mmu/mmu.c
++++ b/arch/x86/kvm/mmu/mmu.c
+@@ -3055,7 +3055,7 @@ static int host_pfn_mapping_level(struct kvm *kvm, gfn_t gfn,
+ 	 * value) and then p*d_offset() walks into the target huge page instead
+ 	 * of the old page table (sees the new value).
+ 	 */
+-	pgd = READ_ONCE(*pgd_offset(kvm->mm, hva));
++	pgd = READ_ONCE(*pgd_offset(current->mm, hva));
+ 	if (pgd_none(pgd))
+ 		goto out;
+ 
+@@ -7131,15 +7131,17 @@ static int kvm_nx_huge_page_recovery_worker(struct kvm *kvm, uintptr_t data)
+ 
+ int kvm_mmu_post_init_vm(struct kvm *kvm)
+ {
+-	int err;
++	// int err;
+ 
+-	err = kvm_vm_create_worker_thread(kvm, kvm_nx_huge_page_recovery_worker, 0,
+-					  "kvm-nx-lpage-recovery",
+-					  &kvm->arch.nx_huge_page_recovery_thread);
+-	if (!err)
+-		kthread_unpark(kvm->arch.nx_huge_page_recovery_thread);
++	// err = kvm_vm_create_worker_thread(kvm, kvm_nx_huge_page_recovery_worker, 0,
++	// 				  "kvm-nx-lpage-recovery",
++	// 				  &kvm->arch.nx_huge_page_recovery_thread);
++	// if (!err)
++	// 	kthread_unpark(kvm->arch.nx_huge_page_recovery_thread);
+ 
+-	return err;
++	// return err;
++	(void)kvm_nx_huge_page_recovery_worker;
++	return 0;
+ }
+ 
+ void kvm_mmu_pre_destroy_vm(struct kvm *kvm)
+diff --git a/arch/x86/kvm/svm/sev.c b/arch/x86/kvm/svm/sev.c
+index 090be7239..9021ce12e 100644
+--- a/arch/x86/kvm/svm/sev.c
++++ b/arch/x86/kvm/svm/sev.c
+@@ -4314,6 +4314,7 @@ int sev_handle_vmgexit(struct kvm_vcpu *vcpu)
+ 	u64 ghcb_gpa, exit_code;
+ 	struct ghcb *ghcb;
+ 	int ret;
++	struct mm_struct *mm;
+ 
+ 	/* Validate the GHCB */
+ 	ghcb_gpa = control->ghcb_gpa;
+@@ -4327,7 +4328,16 @@ int sev_handle_vmgexit(struct kvm_vcpu *vcpu)
+ 		return 1;
+ 	}
+ 
+-	if (kvm_vcpu_map(vcpu, ghcb_gpa >> PAGE_SHIFT, &svm->sev_es.ghcb_map)) {
++	#define SC_GRANTED_MEMORY_BASE 0x180000000
++	if (ghcb_gpa < SC_GRANTED_MEMORY_BASE) {
++		mm = current->mm;
++		current->mm = vcpu->kvm->mm;
++	}
++	ret = kvm_vcpu_map(vcpu, ghcb_gpa >> PAGE_SHIFT, &svm->sev_es.ghcb_map);
++	if (ghcb_gpa < SC_GRANTED_MEMORY_BASE) {
++		current->mm = mm;
++	}
++	if (ret) {
+ 		/* Unable to map GHCB from guest */
+ 		vcpu_unimpl(vcpu, "vmgexit: error mapping GHCB [%#llx] from guest\n",
+ 			    ghcb_gpa);
+diff --git a/arch/x86/kvm/svm/svm.c b/arch/x86/kvm/svm/svm.c
+index 027df20a5..c9a9c089e 100644
+--- a/arch/x86/kvm/svm/svm.c
++++ b/arch/x86/kvm/svm/svm.c
+@@ -1987,10 +1987,16 @@ static int npf_interception(struct kvm_vcpu *vcpu)
+ {
+ 	struct vcpu_svm *svm = to_svm(vcpu);
+ 	int rc;
++	struct mm_struct *mm;
+ 
+ 	u64 fault_address = svm->vmcb->control.exit_info_2;
+ 	u64 error_code = svm->vmcb->control.exit_info_1;
+ 
++	#define SC_GRANTED_MEMORY_BASE 0x180000000
++	if (fault_address < SC_GRANTED_MEMORY_BASE) {
++		mm = current->mm;
++		current->mm = vcpu->kvm->mm;
++	}
+ 	trace_kvm_page_fault(vcpu, fault_address, error_code);
+ 	rc = kvm_mmu_page_fault(vcpu, fault_address, error_code,
+ 				static_cpu_has(X86_FEATURE_DECODEASSISTS) ?
+@@ -2003,10 +2009,14 @@ static int npf_interception(struct kvm_vcpu *vcpu)
+ 	 */
+ 	if (error_code & PFERR_GUEST_RMP_MASK) {
+ 		if (rc == 0)
+-			return rc;
++			goto out;
+ 		handle_rmp_page_fault(vcpu, fault_address, error_code);
+ 	}
+ 
++out:
++	if (fault_address < SC_GRANTED_MEMORY_BASE) {
++		current->mm = mm;
++	}
+ 	return rc;
+ }
+ 
+diff --git a/arch/x86/kvm/x86.c b/arch/x86/kvm/x86.c
+index 608dcc9bb..0cb90ea31 100644
+--- a/arch/x86/kvm/x86.c
++++ b/arch/x86/kvm/x86.c
+@@ -32,6 +32,7 @@
+ #include "lapic.h"
+ #include "xen.h"
+ #include "smm.h"
++#include "split_container.h"
+ 
+ #include <linux/clocksource.h>
+ #include <linux/interrupt.h>
+@@ -9783,6 +9784,25 @@ int kvm_emulate_hypercall(struct kvm_vcpu *vcpu)
+ 		vcpu->arch.complete_userspace_io = complete_hypercall_exit;
+ 		return 0;
+ 	}
++	case KVM_HC_SC_VCPU_IDLE: {
++		split_container_vcpu_idle(vcpu);
++		vcpu->run->exit_reason        = KVM_EXIT_HYPERCALL;
++		vcpu->run->hypercall.nr       = KVM_HC_SC_VCPU_IDLE;
++		vcpu->run->hypercall.longmode = op_64_bit;
++		vcpu->arch.complete_userspace_io = complete_hypercall_exit;
++		return 0;
++	}
++
++	case KVM_HC_SC_REQUEST: {
++		vcpu->run->exit_reason        = KVM_EXIT_HYPERCALL;
++		vcpu->run->hypercall.nr       = KVM_HC_SC_REQUEST;
++		vcpu->run->hypercall.args[0]  = a0;
++		vcpu->run->hypercall.args[1]  = a1;
++		vcpu->run->hypercall.args[2]  = a2;
++		vcpu->run->hypercall.longmode = op_64_bit;
++		vcpu->arch.complete_userspace_io = complete_hypercall_exit;
++		return 0;
++	}
+ 	default:
+ 		ret = -KVM_ENOSYS;
+ 		break;
+@@ -10957,6 +10977,7 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu)
+ 	struct kvm_queued_exception *ex = &vcpu->arch.exception;
+ 	struct kvm_run *kvm_run = vcpu->run;
+ 	int r;
++	// unsigned long t0, t1;
+ 
+ 	vcpu_load(vcpu);
+ 	kvm_sigset_activate(vcpu);
+diff --git a/include/linux/kvm_host.h b/include/linux/kvm_host.h
+index 57d56cd09..90b9603a2 100644
+--- a/include/linux/kvm_host.h
++++ b/include/linux/kvm_host.h
+@@ -391,6 +391,9 @@ struct kvm_vcpu {
+ 	 */
+ 	struct kvm_memory_slot *last_used_slot;
+ 	u64 last_used_slot_gen;
++
++	bool sc_idle;
++	struct list_head sc_idle_node;
+ };
+ 
+ /*
+@@ -838,6 +841,9 @@ struct kvm {
+ 	struct xarray mem_attr_array;
+ #endif
+ 	char stats_id[KVM_STATS_NAME_SIZE];
++
++	spinlock_t sc_idle_vcpus_lock;
++	struct list_head sc_idle_vcpus;
+ };
+ 
+ #define kvm_err(fmt, ...) \
+diff --git a/virt/kvm/kvm_main.c b/virt/kvm/kvm_main.c
+index 003cb199b..50cec32ad 100644
+--- a/virt/kvm/kvm_main.c
++++ b/virt/kvm/kvm_main.c
+@@ -61,6 +61,7 @@
+ #include "async_pf.h"
+ #include "kvm_mm.h"
+ #include "vfio.h"
++#include "split_container.h"
+ 
+ #define CREATE_TRACE_POINTS
+ #include <trace/events/kvm.h>
+@@ -1352,6 +1353,11 @@ static struct kvm *kvm_create_vm(unsigned long type, const char *fdname)
+ 	if (!kvm)
+ 		return ERR_PTR(-ENOMEM);
+ 
++	if (type & KVM_VM_TYPE_SC_MASK) {
++		split_container_vm_create(kvm, KVM_VM_TYPE_SC_SLOT_ID(type));
++		type &= ~KVM_VM_TYPE_SC_MASK;
++	}
++
+ 	/* KVM is pinned via open("/dev/kvm"), the fd passed to this ioctl(). */
+ 	__module_get(kvm_chardev_ops.owner);
+ 
+@@ -1503,6 +1509,8 @@ static void kvm_destroy_vm(struct kvm *kvm)
+ 	int i;
+ 	struct mm_struct *mm = kvm->mm;
+ 
++	split_container_vm_destroy(kvm);
++
+ 	kvm_destroy_pm_notifier(kvm);
+ 	kvm_uevent_notify_change(KVM_EVENT_DESTROY_VM, kvm);
+ 	kvm_destroy_vm_debugfs(kvm);
+@@ -4425,7 +4433,7 @@ static long kvm_vcpu_ioctl(struct file *filp,
+ 	struct kvm_fpu *fpu = NULL;
+ 	struct kvm_sregs *kvm_sregs = NULL;
+ 
+-	if (vcpu->kvm->mm != current->mm || vcpu->kvm->vm_dead)
++	if (vcpu->kvm->vm_dead)
+ 		return -EIO;
+ 
+ 	if (unlikely(_IOC_TYPE(ioctl) != KVMIO))
+@@ -4447,6 +4455,8 @@ static long kvm_vcpu_ioctl(struct file *filp,
+ 		r = -EINVAL;
+ 		if (arg)
+ 			goto out;
++		if (split_container_vcpu_is_idle(vcpu))
++			goto out;
+ 		oldpid = rcu_access_pointer(vcpu->pid);
+ 		if (unlikely(oldpid != task_pid(current))) {
+ 			/* The thread running this VCPU changed. */
+@@ -4458,8 +4468,8 @@ static long kvm_vcpu_ioctl(struct file *filp,
+ 
+ 			newpid = get_task_pid(current, PIDTYPE_PID);
+ 			rcu_assign_pointer(vcpu->pid, newpid);
+-			if (oldpid)
+-				synchronize_rcu();
++			// if (oldpid)
++			// 	synchronize_rcu();
+ 			put_pid(oldpid);
+ 		}
+ 		r = kvm_arch_vcpu_ioctl_run(vcpu);
+@@ -5082,6 +5092,25 @@ do {										\
+ 		     sizeof_field(struct kvm_userspace_memory_region2, field));	\
+ } while (0)
+ 
++static int kvm_vm_ioctl_sc_alloc_vcpu(struct kvm *kvm)
++{
++	int fd;
++	struct kvm_vcpu *vcpu;
++
++	vcpu = split_container_vcpu_alloc(kvm);
++	if (vcpu == NULL) {
++		return -ENOENT;
++	}
++
++	kvm_get_kvm(vcpu->kvm);
++	fd = create_vcpu_fd(vcpu);
++	if (fd < 0) {
++		kvm_put_kvm_no_destroy(vcpu->kvm);
++	}
++
++	return fd;
++}
++
+ static long kvm_vm_ioctl(struct file *filp,
+ 			   unsigned int ioctl, unsigned long arg)
+ {
+@@ -5089,7 +5118,7 @@ static long kvm_vm_ioctl(struct file *filp,
+ 	void __user *argp = (void __user *)arg;
+ 	int r;
+ 
+-	if (kvm->mm != current->mm || kvm->vm_dead)
++	if (kvm->vm_dead)
+ 		return -EIO;
+ 	switch (ioctl) {
+ 	case KVM_CREATE_VCPU:
+@@ -5304,6 +5333,9 @@ static long kvm_vm_ioctl(struct file *filp,
+ 	case KVM_GET_STATS_FD:
+ 		r = kvm_vm_ioctl_get_stats_fd(kvm);
+ 		break;
++	case KVM_SC_ALLOC_VCPU:
++		r = kvm_vm_ioctl_sc_alloc_vcpu(kvm);
++		break;
+ 	default:
+ 		r = kvm_arch_vm_ioctl(filp, ioctl, arg);
+ 	}
+@@ -5447,6 +5479,39 @@ static int kvm_dev_ioctl_create_vm(unsigned long type)
+ 	return r;
+ }
+ 
++static int kvm_dev_ioctl_sc_get_vm(unsigned long arg)
++{
++	int r;
++	struct kvm *kvm;
++	struct file *file;
++
++	// (void)arg;
++
++	kvm = split_container_vm_get(arg);
++	if (!kvm) {
++		return -ENOENT;
++	}
++
++	r = get_unused_fd_flags(O_CLOEXEC);
++	if (r < 0)
++		goto put_kvm;
++
++	kvm_get_kvm(kvm);
++	file = anon_inode_getfile("kvm-vm", &kvm_vm_fops, kvm, O_RDWR);
++	if (IS_ERR(file)) {
++		put_unused_fd(r);
++		r = PTR_ERR(file);
++		goto put_kvm;
++	}
++
++	fd_install(r, file);
++	return r;
++
++put_kvm:
++	kvm_put_kvm(kvm);
++	return r;
++}
++
+ static long kvm_dev_ioctl(struct file *filp,
+ 			  unsigned int ioctl, unsigned long arg)
+ {
+@@ -5480,6 +5545,9 @@ static long kvm_dev_ioctl(struct file *filp,
+ 	case KVM_TRACE_DISABLE:
+ 		r = -EOPNOTSUPP;
+ 		break;
++	case KVM_SC_GET_VM:
++		r = kvm_dev_ioctl_sc_get_vm(arg);
++		break;
+ 	default:
+ 		return kvm_arch_dev_ioctl(filp, ioctl, arg);
+ 	}

@@ -1,0 +1,11 @@
+{
+    "input_bucket": "input",
+    "object_key": "sample-image.jpg",
+    "model_object_key": "haarcascade_frontalface_default.xml",
+    "output_bucket": "output",
+    "model_bucket": "input",
+    "endpoint_url": "http://hostname:9000",
+    "aws_access_key_id": "root",
+    "aws_secret_access_key": "password",
+    "metadata": null
+}

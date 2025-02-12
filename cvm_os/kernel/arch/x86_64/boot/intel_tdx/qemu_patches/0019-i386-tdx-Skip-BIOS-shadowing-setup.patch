@@ -1,0 +1,50 @@
+From 5d325aaad04c1f4b340cfa781e4e18a11fd5daab Mon Sep 17 00:00:00 2001
+From: Xiaoyao Li <xiaoyao.li@intel.com>
+Date: Thu, 31 Mar 2022 14:47:41 +0800
+Subject: [PATCH 19/99] i386/tdx: Skip BIOS shadowing setup
+
+TDX guest cannot go to real mode, so just skip the setup of isa-bios.
+
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+---
+ hw/i386/x86.c | 24 +++++++++++++-----------
+ 1 file changed, 13 insertions(+), 11 deletions(-)
+
+diff --git a/hw/i386/x86.c b/hw/i386/x86.c
+index 4970d86ceb..32a1058385 100644
+--- a/hw/i386/x86.c
++++ b/hw/i386/x86.c
+@@ -1154,17 +1154,19 @@ void x86_bios_rom_init(MachineState *ms, const char *default_firmware,
+     }
+     g_free(filename);
+ 
+-    /* map the last 128KB of the BIOS in ISA space */
+-    isa_bios_size = MIN(bios_size, 128 * KiB);
+-    isa_bios = g_malloc(sizeof(*isa_bios));
+-    memory_region_init_alias(isa_bios, NULL, "isa-bios", bios,
+-                             bios_size - isa_bios_size, isa_bios_size);
+-    memory_region_add_subregion_overlap(rom_memory,
+-                                        0x100000 - isa_bios_size,
+-                                        isa_bios,
+-                                        1);
+-    if (!isapc_ram_fw) {
+-        memory_region_set_readonly(isa_bios, true);
++    if (!is_tdx_vm()) {
++        /* map the last 128KB of the BIOS in ISA space */
++        isa_bios_size = MIN(bios_size, 128 * KiB);
++        isa_bios = g_malloc(sizeof(*isa_bios));
++        memory_region_init_alias(isa_bios, NULL, "isa-bios", bios,
++                                bios_size - isa_bios_size, isa_bios_size);
++        memory_region_add_subregion_overlap(rom_memory,
++                                            0x100000 - isa_bios_size,
++                                            isa_bios,
++                                            1);
++        if (!isapc_ram_fw) {
++            memory_region_set_readonly(isa_bios, true);
++        }
+     }
+ 
+     /* map all the bios at the top of memory */
+-- 
+2.31.1
+

@@ -1,0 +1,33 @@
+{
+  "boot-source": {
+    "kernel_image_path": "/home/sjc/split-container/data/severifast/scripts/..//kernels/bzImage-aws-6.4-lz4",
+    "boot_args": "reboot=k panic=-1 noapic noapictimer nosmp acpi=off console=ttyS0 quiet root=/dev/vda i8042.noaux i8042.nopnp i8042.dumbkbd i8042.nomux rdinit=/bin/xxx init=/bin/myinit",
+    "initrd_path": null
+  },
+  "drives": [
+    {
+      "drive_id": "rootfs",
+      "path_on_host": "./test-cntr/rootfs2.ext4",
+      "is_root_device": true,
+      "partuuid": null,
+      "is_read_only": false,
+      "cache_type": "Unsafe",
+      "io_engine": "Sync",
+      "rate_limiter": null
+    }
+  ],
+  "machine-config": {
+    "vcpu_count": 1,
+    "mem_size_mib": 256,
+    "smt": false,
+    "track_dirty_pages": false,
+    "hugepages": true
+  },
+  "sev-config": { "firmware_path": "./bin/snp-fw.bin", "snp": true, "kernel_hash_path": "/home/sjc/split-container/data/severifast/scripts/..//hashes/bzImage-aws-6.4-lz4.hash",  "policy": 5, "session_path": "./certs/guest/launch/sev-es/launch_blob.bin", "dh_cert": "./certs/guest/launch/sev-es/godh.cert" },
+  "balloon": null,
+ "network-interfaces": [ { "iface_id": "eth0", "guest_mac": "AA:FC:00:00:00:01", "host_dev_name": "tap0" }],
+  "vsock": null,
+  "logger": null,
+  "metrics": null,
+  "mmds-config": null
+}

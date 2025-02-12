@@ -1,0 +1,228 @@
+From cd5ab0f3d2c87c949b156076bb97400d3da38950 Mon Sep 17 00:00:00 2001
+From: Yuan Yao <yuan.yao@intel.com>
+Date: Thu, 2 Sep 2021 16:34:12 +0800
+Subject: [PATCH 93/99] target/i386: "dump-guest-memory": Support paging for
+ encrypted guest
+
+Allow hmp command "dump-guest-memory" works with -p parameter
+for encrypted guest.
+
+Signed-off-by: Yuan Yao <yuan.yao@intel.com>
+---
+ dump/dump.c                       |  2 +-
+ target/i386/arch_memory_mapping.c | 26 +++++++++++++++-----------
+ target/i386/cpu.h                 |  2 ++
+ target/i386/helper.c              | 24 ++++++++++++++++++------
+ 4 files changed, 36 insertions(+), 18 deletions(-)
+
+diff --git a/dump/dump.c b/dump/dump.c
+index 4d9658ffa2..e2235ea9eb 100644
+--- a/dump/dump.c
++++ b/dump/dump.c
+@@ -1711,7 +1711,7 @@ static void dump_init(DumpState *s, int fd, bool has_format,
+             warn_report("guest note format is unsupported: %" PRIu16, format);
+         } else {
+             s->guest_note = g_malloc(size + 1); /* +1 for adding \0 */
+-            cpu_physical_memory_read(addr, s->guest_note, size);
++            cpu_physical_memory_read_debug(addr, s->guest_note, size);
+ 
+             get_note_sizes(s, s->guest_note, NULL, &name_size, &desc_size);
+             s->guest_note_size = ELF_NOTE_SIZE(note_head_size, name_size,
+diff --git a/target/i386/arch_memory_mapping.c b/target/i386/arch_memory_mapping.c
+index 271cb5e41b..9b69962119 100644
+--- a/target/i386/arch_memory_mapping.c
++++ b/target/i386/arch_memory_mapping.c
+@@ -14,6 +14,8 @@
+ #include "qemu/osdep.h"
+ #include "cpu.h"
+ #include "sysemu/memory_mapping.h"
++#include "sysemu/kvm.h"
++#include "sysemu/tdx.h"
+ 
+ /* PAE Paging or IA-32e Paging */
+ static void walk_pte(MemoryMappingList *list, AddressSpace *as,
+@@ -27,13 +29,14 @@ static void walk_pte(MemoryMappingList *list, AddressSpace *as,
+ 
+     for (i = 0; i < 512; i++) {
+         pte_addr = (pte_start_addr + i * 8) & a20_mask;
+-        pte = address_space_ldq(as, pte_addr, MEMTXATTRS_UNSPECIFIED, NULL);
++        pte = x86_ldq_phys_as_debug(as, pte_addr);
+         if (!(pte & PG_PRESENT_MASK)) {
+             /* not present */
+             continue;
+         }
+ 
+         start_paddr = (pte & ~0xfff) & ~(0x1ULL << 63);
++        start_paddr = kvm_encrypted_guest_mask_gpa_stolen_bit(start_paddr);
+         if (cpu_physical_memory_is_io(start_paddr)) {
+             /* I/O region */
+             continue;
+@@ -57,13 +60,14 @@ static void walk_pte2(MemoryMappingList *list, AddressSpace *as,
+ 
+     for (i = 0; i < 1024; i++) {
+         pte_addr = (pte_start_addr + i * 4) & a20_mask;
+-        pte = address_space_ldl(as, pte_addr, MEMTXATTRS_UNSPECIFIED, NULL);
++        pte = x86_ldl_phys_as_debug(as, pte_addr);
+         if (!(pte & PG_PRESENT_MASK)) {
+             /* not present */
+             continue;
+         }
+ 
+         start_paddr = pte & ~0xfff;
++        start_paddr = kvm_encrypted_guest_mask_gpa_stolen_bit(start_paddr);
+         if (cpu_physical_memory_is_io(start_paddr)) {
+             /* I/O region */
+             continue;
+@@ -89,7 +93,7 @@ static void walk_pde(MemoryMappingList *list, AddressSpace *as,
+ 
+     for (i = 0; i < 512; i++) {
+         pde_addr = (pde_start_addr + i * 8) & a20_mask;
+-        pde = address_space_ldq(as, pde_addr, MEMTXATTRS_UNSPECIFIED, NULL);
++        pde = x86_ldq_phys_as_debug(as, pde_addr);
+         if (!(pde & PG_PRESENT_MASK)) {
+             /* not present */
+             continue;
+@@ -99,6 +103,7 @@ static void walk_pde(MemoryMappingList *list, AddressSpace *as,
+         if (pde & PG_PSE_MASK) {
+             /* 2 MB page */
+             start_paddr = (pde & ~0x1fffff) & ~(0x1ULL << 63);
++            start_paddr = kvm_encrypted_guest_mask_gpa_stolen_bit(start_paddr);
+             if (cpu_physical_memory_is_io(start_paddr)) {
+                 /* I/O region */
+                 continue;
+@@ -126,7 +131,7 @@ static void walk_pde2(MemoryMappingList *list, AddressSpace *as,
+ 
+     for (i = 0; i < 1024; i++) {
+         pde_addr = (pde_start_addr + i * 4) & a20_mask;
+-        pde = address_space_ldl(as, pde_addr, MEMTXATTRS_UNSPECIFIED, NULL);
++        pde = x86_ldl_phys_as_debug(as, pde_addr);
+         if (!(pde & PG_PRESENT_MASK)) {
+             /* not present */
+             continue;
+@@ -141,6 +146,7 @@ static void walk_pde2(MemoryMappingList *list, AddressSpace *as,
+              */
+             high_paddr = ((hwaddr)(pde & 0x1fe000) << 19);
+             start_paddr = (pde & ~0x3fffff) | high_paddr;
++            start_paddr = kvm_encrypted_guest_mask_gpa_stolen_bit(start_paddr);
+             if (cpu_physical_memory_is_io(start_paddr)) {
+                 /* I/O region */
+                 continue;
+@@ -167,7 +173,7 @@ static void walk_pdpe2(MemoryMappingList *list, AddressSpace *as,
+ 
+     for (i = 0; i < 4; i++) {
+         pdpe_addr = (pdpe_start_addr + i * 8) & a20_mask;
+-        pdpe = address_space_ldq(as, pdpe_addr, MEMTXATTRS_UNSPECIFIED, NULL);
++        pdpe = x86_ldq_phys_as_debug(as, pdpe_addr);
+         if (!(pdpe & PG_PRESENT_MASK)) {
+             /* not present */
+             continue;
+@@ -192,7 +198,7 @@ static void walk_pdpe(MemoryMappingList *list, AddressSpace *as,
+ 
+     for (i = 0; i < 512; i++) {
+         pdpe_addr = (pdpe_start_addr + i * 8) & a20_mask;
+-        pdpe = address_space_ldq(as, pdpe_addr, MEMTXATTRS_UNSPECIFIED, NULL);
++        pdpe = x86_ldq_phys_as_debug(as, pdpe_addr);
+         if (!(pdpe & PG_PRESENT_MASK)) {
+             /* not present */
+             continue;
+@@ -202,6 +208,7 @@ static void walk_pdpe(MemoryMappingList *list, AddressSpace *as,
+         if (pdpe & PG_PSE_MASK) {
+             /* 1 GB page */
+             start_paddr = (pdpe & ~0x3fffffff) & ~(0x1ULL << 63);
++            start_paddr = kvm_encrypted_guest_mask_gpa_stolen_bit(start_paddr);
+             if (cpu_physical_memory_is_io(start_paddr)) {
+                 /* I/O region */
+                 continue;
+@@ -229,8 +236,7 @@ static void walk_pml4e(MemoryMappingList *list, AddressSpace *as,
+ 
+     for (i = 0; i < 512; i++) {
+         pml4e_addr = (pml4e_start_addr + i * 8) & a20_mask;
+-        pml4e = address_space_ldq(as, pml4e_addr, MEMTXATTRS_UNSPECIFIED,
+-                                  NULL);
++        pml4e = x86_ldq_phys_as_debug(as, pml4e_addr);
+         if (!(pml4e & PG_PRESENT_MASK)) {
+             /* not present */
+             continue;
+@@ -252,8 +258,7 @@ static void walk_pml5e(MemoryMappingList *list, AddressSpace *as,
+ 
+     for (i = 0; i < 512; i++) {
+         pml5e_addr = (pml5e_start_addr + i * 8) & a20_mask;
+-        pml5e = address_space_ldq(as, pml5e_addr, MEMTXATTRS_UNSPECIFIED,
+-                                  NULL);
++        pml5e = x86_ldq_phys_as_debug(as, pml5e_addr);
+         if (!(pml5e & PG_PRESENT_MASK)) {
+             /* not present */
+             continue;
+@@ -311,4 +316,3 @@ void x86_cpu_get_memory_mapping(CPUState *cs, MemoryMappingList *list,
+         walk_pde2(list, cs->as, pde_addr, a20_mask, pse);
+     }
+ }
+-
+diff --git a/target/i386/cpu.h b/target/i386/cpu.h
+index bae9873f48..200b632c59 100644
+--- a/target/i386/cpu.h
++++ b/target/i386/cpu.h
+@@ -2146,6 +2146,8 @@ void x86_stl_phys_notdirty(CPUState *cs, hwaddr addr, uint32_t val);
+ void x86_stw_phys(CPUState *cs, hwaddr addr, uint32_t val);
+ void x86_stl_phys(CPUState *cs, hwaddr addr, uint32_t val);
+ void x86_stq_phys(CPUState *cs, hwaddr addr, uint64_t val);
++uint32_t x86_ldl_phys_as_debug(struct AddressSpace *as, hwaddr addr);
++uint64_t x86_ldq_phys_as_debug(struct AddressSpace *as, hwaddr addr);
+ uint32_t x86_ldl_phys_debug(CPUState *cs, hwaddr addr);
+ uint64_t x86_ldq_phys_debug(CPUState *cs, hwaddr addr);
+ #endif
+diff --git a/target/i386/helper.c b/target/i386/helper.c
+index 625e4ef6b6..3f69a182c1 100644
+--- a/target/i386/helper.c
++++ b/target/i386/helper.c
+@@ -703,12 +703,10 @@ void x86_stq_phys(CPUState *cs, hwaddr addr, uint64_t val)
+     address_space_stq(as, addr, val, attrs, NULL);
+ }
+ 
+-uint32_t x86_ldl_phys_debug(CPUState *cs, hwaddr addr)
++uint32_t x86_ldl_phys_as_debug(struct AddressSpace *as, hwaddr addr)
+ {
+     uint32_t ret;
+     MemTxAttrs attrs = MEMTXATTRS_UNSPECIFIED_DEBUG;
+-    int as_id = cpu_asidx_from_attrs(cs, attrs);
+-    struct AddressSpace *as = cpu_get_address_space(cs, as_id);
+ 
+     physical_memory_debug_ops->read(as, addr, attrs,
+                                     &ret, sizeof(ret));
+@@ -716,16 +714,30 @@ uint32_t x86_ldl_phys_debug(CPUState *cs, hwaddr addr)
+     return tswap32(ret);
+ }
+ 
+-uint64_t x86_ldq_phys_debug(CPUState *cs, hwaddr addr)
++uint64_t x86_ldq_phys_as_debug(struct AddressSpace *as, hwaddr addr)
+ {
+     uint64_t ret;
+     MemTxAttrs attrs = MEMTXATTRS_UNSPECIFIED_DEBUG;
+-    int as_id = cpu_asidx_from_attrs(cs, attrs);
+-    struct AddressSpace *as = cpu_get_address_space(cs, as_id);
+ 
+     physical_memory_debug_ops->read(as, addr, attrs,
+                                     &ret, sizeof(ret));
+ 
+     return tswap64(ret);
+ }
++
++uint32_t x86_ldl_phys_debug(CPUState *cs, hwaddr addr)
++{
++    int as_id = cpu_asidx_from_attrs(cs, MEMTXATTRS_UNSPECIFIED);
++    struct AddressSpace *as = cpu_get_address_space(cs, as_id);
++
++    return x86_ldl_phys_as_debug(as, addr);
++}
++
++uint64_t x86_ldq_phys_debug(CPUState *cs, hwaddr addr)
++{
++    int as_id = cpu_asidx_from_attrs(cs, MEMTXATTRS_UNSPECIFIED);
++    struct AddressSpace *as = cpu_get_address_space(cs, as_id);
++
++    return x86_ldq_phys_as_debug(as, addr);
++}
+ #endif
+-- 
+2.31.1
+

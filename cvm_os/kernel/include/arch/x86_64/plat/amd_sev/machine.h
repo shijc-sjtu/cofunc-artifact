@@ -1,0 +1,84 @@
+/*
+ * Copyright (c) 2023 Institute of Parallel And Distributed Systems (IPADS), Shanghai Jiao Tong University (SJTU)
+ * Licensed under the Mulan PSL v2.
+ * You can use this software according to the terms and conditions of the Mulan PSL v2.
+ * You may obtain a copy of Mulan PSL v2 at:
+ *     http://license.coscl.org.cn/MulanPSL2
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FIT FOR A PARTICULAR
+ * PURPOSE.
+ * See the Mulan PSL v2 for more details.
+ */
+
+#pragma once
+
+/* Should be set at boot time */
+#ifndef CHCORE_SPLIT_CONTAINER
+#define PLAT_CPU_NUM 4
+#else /* CHCORE_SPLIT_CONTAINER */
+#define PLAT_CPU_NUM 96
+#define PLAT_CPU_POOL_BASE 4
+#endif /* CHCORE_SPLIT_CONTAINER */
+
+/* MSR Registers */
+#define IA32_APIC_BASE		0x0000001b
+#define MSR_IA32_TSC_DEADLINE	0x000006e0
+#define MSR_STAR		0xc0000081
+#define MSR_LSTAR		0xc0000082
+#define MSR_CSTAR		0xc0000083
+#define MSR_SFMASK		0xc0000084
+/* IA32_KERNEL_GS_BASE, will be swap to IA32_GS_BASE after swapgs */
+#define MSR_GSBASE		0xc0000102
+#define MSR_GHCB		0xc0010130
+#define MSR_AMD64_SEV		0xc0010131
+
+/* BITs in IA32_APIC_BASE */
+#define APIC_BASE_X2APIC_ENABLE   (1 << 10)
+
+#ifndef __ASM__
+#include <common/types.h>
+#include <sev.h>
+
+void enable_smap(void);
+void disable_smap(void);
+
+static inline u64 rdmsr(u64 msr)
+{
+	return sev_snp_do_rdmsr(msr);
+}
+
+static inline void wrmsr(u64 msr, u64 val)
+{
+	return sev_snp_do_wrmsr(msr, val);
+}
+
+static inline u64 __rdmsr(u64 msr)
+{
+	u32 high, low;
+
+	__asm__ __volatile__("rdmsr":"=d"(high), "=a"(low):"c"(msr));
+	return ((u64) low) | (((u64) high) << 32);
+}
+
+static inline void __wrmsr(u64 msr, u64 val)
+{
+	u32 high, low;
+
+	low = val & 0xffffffff;	/* low 32-bit */
+	high = val >> 32;
+	__asm__ __volatile__("wrmsr"::"c"(msr), "a"(low), "d"(high):"memory");
+}
+
+/* cpuid definations */
+#define CPUID_FEATURE		1
+
+#define FEATURE_ECX_X2APIC	(1 << 21)
+#define FEATURE_EDX_XAPIC	(1 << 9)
+
+static inline void cpuid(u32 op, u32 *eax, u32 *ebx, u32 *ecx, u32 *edx)
+{
+	*eax = op;
+	*ecx = 0;
+	sev_snp_do_cpuid(eax, ebx, ecx, edx);
+}
+#endif

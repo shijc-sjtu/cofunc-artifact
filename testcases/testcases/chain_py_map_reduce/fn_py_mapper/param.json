@@ -1,0 +1,9 @@
+{
+    "job_bucket": "job",
+    "bucket": "input",
+    "keys": "C#.html/C++.html/Clojure.html/CSS.html/Groovy.html/Haskell.html/Java.html/JavaScript.html/MATLAB.html/Objective-C.html/Perl.html/PHP.html/Python.html/Ruby.html/Scala.html",
+    "mapper_id": 0,
+    "endpoint_url": "http://hostname:9000",
+    "aws_access_key_id": "root",
+    "aws_secret_access_key": "password"
+}

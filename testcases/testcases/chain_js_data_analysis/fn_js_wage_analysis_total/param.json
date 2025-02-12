@@ -1,0 +1,17 @@
+{
+    "total": {
+        "statistics": {
+        "total": 16500469,
+        "staff-number": 360,
+        "teamleader-number": 317,
+        "manager-number": 323
+        }
+    },
+    "base": {
+        "statistics": { "staff": 1800000, "teamleader": 2536000, "manager": 2584000 }
+    },
+    "merit": {
+        "statistics": { "staff": 823549, "teamleader": 5778127, "manager": 1478793 }
+    },
+    "operator": 1
+}

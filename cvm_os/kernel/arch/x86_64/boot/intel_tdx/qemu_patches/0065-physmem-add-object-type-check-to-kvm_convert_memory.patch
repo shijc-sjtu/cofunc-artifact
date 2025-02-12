@@ -1,0 +1,87 @@
+From 9b7cf2220f8028f1a12f62bc03220fd51b30511a Mon Sep 17 00:00:00 2001
+From: Isaku Yamahata <isaku.yamahata@intel.com>
+Date: Wed, 13 Apr 2022 12:41:13 -0700
+Subject: [PATCH 65/99] physmem: add object type check to kvm_convert_memory
+
+kvm_convert_memory() makes sense only when the RamBlock is backed by
+private memfd host memory backend.  Add type check and warn it if the check
+fails.
+
+Signed-off-by: Isaku Yamahata <isaku.yamahata@intel.com>
+---
+ accel/kvm/kvm-all.c              | 20 ++++++++++++++------
+ backends/hostmem-memfd-private.c |  2 --
+ include/sysemu/hostmem.h         |  7 +++++++
+ 3 files changed, 21 insertions(+), 8 deletions(-)
+
+diff --git a/accel/kvm/kvm-all.c b/accel/kvm/kvm-all.c
+index 553a168cb9..24725339a2 100644
+--- a/accel/kvm/kvm-all.c
++++ b/accel/kvm/kvm-all.c
+@@ -2885,18 +2885,26 @@ static int kvm_convert_memory(hwaddr start, hwaddr size, bool shared_to_private)
+     void *addr;
+     RAMBlock *rb;
+     ram_addr_t offset;
+-    int ret;
++    int ret = -1;
+ 
+     section = memory_region_find(get_system_memory(), start, size);
+-    if (section.mr) {
++    if (!section.mr) {
++        return -1;
++    }
++
++    if (object_dynamic_cast(section.mr->owner,
++                            TYPE_MEMORY_BACKEND_MEMFD_PRIVATE)) {
+         addr = memory_region_get_ram_ptr(section.mr) +
+-               section.offset_within_region;
++            section.offset_within_region;
+         rb = qemu_ram_block_from_host(addr, false, &offset);
+         ret = ram_block_convert_range(rb, offset, size, shared_to_private);
+-        memory_region_unref(section.mr);
+-        return ret;
++    } else {
++        warn_report("Unkonwn start 0x%"HWADDR_PRIx" size 0x%"HWADDR_PRIx" shared_to_private %d",
++                    start, size, shared_to_private);
+     }
+-    return -1;
++
++    memory_region_unref(section.mr);
++    return ret;
+ }
+ 
+ int kvm_cpu_exec(CPUState *cpu)
+diff --git a/backends/hostmem-memfd-private.c b/backends/hostmem-memfd-private.c
+index 55c56e5537..5f06da4c4f 100644
+--- a/backends/hostmem-memfd-private.c
++++ b/backends/hostmem-memfd-private.c
+@@ -18,8 +18,6 @@
+ #include "qapi/error.h"
+ #include "qom/object.h"
+ 
+-#define TYPE_MEMORY_BACKEND_MEMFD_PRIVATE "memory-backend-memfd-private"
+-
+ OBJECT_DECLARE_SIMPLE_TYPE(HostMemoryBackendPrivateMemfd,
+                            MEMORY_BACKEND_MEMFD_PRIVATE)
+ 
+diff --git a/include/sysemu/hostmem.h b/include/sysemu/hostmem.h
+index 9ff5c16963..337daf4458 100644
+--- a/include/sysemu/hostmem.h
++++ b/include/sysemu/hostmem.h
+@@ -39,6 +39,13 @@ OBJECT_DECLARE_TYPE(HostMemoryBackend, HostMemoryBackendClass,
+ #define TYPE_MEMORY_BACKEND_FILE "memory-backend-file"
+ 
+ 
++/* hostmem-memfd-private.c */
++/**
++ * @TYPE_MEMORY_BACKEND_MEMFD_PRIVATE
++ * name of backend that uses private memfd
++ */
++#define TYPE_MEMORY_BACKEND_MEMFD_PRIVATE "memory-backend-memfd-private"
++
+ /**
+  * HostMemoryBackendClass:
+  * @parent_class: opaque parent class container
+-- 
+2.31.1
+

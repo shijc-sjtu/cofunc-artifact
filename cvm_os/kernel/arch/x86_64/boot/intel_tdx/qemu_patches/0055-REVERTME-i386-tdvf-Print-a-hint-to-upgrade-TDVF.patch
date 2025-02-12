@@ -1,0 +1,31 @@
+From 17c2047f75eeed52eea15d048510361d41fef643 Mon Sep 17 00:00:00 2001
+From: Xiaoyao Li <xiaoyao.li@intel.com>
+Date: Fri, 18 Mar 2022 13:59:37 +0800
+Subject: [PATCH 55/99] [REVERTME] i386/tdvf: Print a hint to upgrade TDVF
+
+When old TDVF that doesn't implement GUID is used, print out a log to
+tell people to upgrade to new TDVF for upstream.
+
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+---
+ hw/i386/tdvf.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/hw/i386/tdvf.c b/hw/i386/tdvf.c
+index e843edadbf..617a90483e 100644
+--- a/hw/i386/tdvf.c
++++ b/hw/i386/tdvf.c
+@@ -68,6 +68,10 @@ static TdvfMetadata *tdvf_get_metadata(TdxFirmware *fw, void *flash_ptr, int siz
+         }
+     } else {
+         error_report("Cannot find TDX_METADATA_OFFSET_GUID");
++        warn_report("==============================================================");
++        warn_report("!!!    Warning: Please upgrade to upstream version TDVF    !!!");
++        warn_report("!!!             Old version will be deprecated soon        !!!");
++        warn_report("==============================================================");
+         fw->guid_found = false;
+ 
+ #define TDVF_METDATA_OFFSET_FROM_END 0x20
+-- 
+2.31.1
+

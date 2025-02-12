@@ -1,0 +1,155 @@
+From c77056d79b037297efea0b0e21cd63783d873eca Mon Sep 17 00:00:00 2001
+From: Yuan Yao <yuan.yao@intel.com>
+Date: Thu, 9 Sep 2021 14:33:20 +0800
+Subject: [PATCH 94/99] dump/dump: "dump-guest-memory": Support vmcore dump
+ format for encrypted guest
+
+Allow hmp command "dump-guest-memory" works with it's default
+vmcore output format for encrypted guest.
+
+Signed-off-by: Yuan Yao <yuan.yao@intel.com>
+---
+ dump/dump.c           | 65 +++++++++++++++++++++++++++++++++++++++++--
+ include/qemu/cutils.h |  1 -
+ include/sysemu/dump.h |  1 +
+ 3 files changed, 64 insertions(+), 3 deletions(-)
+
+diff --git a/dump/dump.c b/dump/dump.c
+index e2235ea9eb..bac82bbe1c 100644
+--- a/dump/dump.c
++++ b/dump/dump.c
+@@ -22,12 +22,14 @@
+ #include "sysemu/runstate.h"
+ #include "sysemu/cpus.h"
+ #include "qapi/error.h"
++#include "sysemu/tdx.h"
+ #include "qapi/qapi-commands-dump.h"
+ #include "qapi/qapi-events-dump.h"
+ #include "qapi/qmp/qerror.h"
+ #include "qemu/error-report.h"
+ #include "qemu/main-loop.h"
+ #include "hw/misc/vmcoreinfo.h"
++#include "hw/boards.h"
+ #include "migration/blocker.h"
+ 
+ #ifdef TARGET_X86_64
+@@ -428,6 +430,41 @@ static void write_memory(DumpState *s, GuestPhysBlock *block, ram_addr_t start,
+     }
+ }
+ 
++static void write_memory_encrypted_guest(DumpState *s, GuestPhysBlock *block,
++                                         ram_addr_t start, int64_t size,
++                                         void *page_buf, uint64_t page_buf_size,
++                                         Error **errp)
++{
++    Error *local_err = NULL;
++    hwaddr gpa = block->target_start + start;
++    uint8_t *hva = block->host_addr + start;
++    int64_t round_size;
++    MemoryRegion *mr = block->mr;
++
++    if (!memory_region_ram_debug_ops_read_available(block->mr)) {
++        memset(page_buf, 0, page_buf_size);
++        return;
++    }
++
++    while (size > 0) {
++        round_size = size < page_buf_size ? size : page_buf_size;
++        mr->ram_debug_ops->read(page_buf,
++                                hva, gpa,
++                                round_size,
++                                MEMTXATTRS_UNSPECIFIED_DEBUG);
++
++        write_data(s, page_buf, round_size, &local_err);
++        if (local_err) {
++            error_propagate(errp, local_err);
++            return;
++        }
++
++        size -= round_size;
++        gpa += round_size;
++        hva += round_size;
++    }
++}
++
+ /* get the memory's offset and size in the vmcore */
+ static void get_offset_range(hwaddr phys_addr,
+                              ram_addr_t mapping_length,
+@@ -624,6 +661,15 @@ static void dump_iterate(DumpState *s, Error **errp)
+     ERRP_GUARD();
+     GuestPhysBlock *block;
+     int64_t size;
++    void *page_buf = NULL;
++
++    if (s->encrypted_guest) {
++        page_buf = g_malloc(s->dump_info.page_size);
++        if (!page_buf) {
++            error_setg(errp, "No enough memory.");
++            return;
++        }
++    }
+ 
+     do {
+         block = s->next_block;
+@@ -635,12 +681,23 @@ static void dump_iterate(DumpState *s, Error **errp)
+                 size -= block->target_end - (s->begin + s->length);
+             }
+         }
+-        write_memory(s, block, s->start, size, errp);
++
++        if (!s->encrypted_guest) {
++            write_memory(s, block, s->start, size, errp);
++        } else {
++            write_memory_encrypted_guest(s, block, s->start, size,
++                                         page_buf, s->dump_info.page_size,
++                                         errp);
++        }
++
+         if (*errp) {
+-            return;
++            break;
+         }
+ 
+     } while (!get_next_block(s, block));
++
++    if (page_buf)
++        g_free(page_buf);
+ }
+ 
+ static void create_vmcore(DumpState *s, Error **errp)
+@@ -1532,6 +1589,10 @@ static void dump_state_prepare(DumpState *s)
+ {
+     /* zero the struct, setting status to active */
+     *s = (DumpState) { .status = DUMP_STATUS_ACTIVE };
++
++    if (tdx_debug_enabled()) {
++        s->encrypted_guest = true;
++    }
+ }
+ 
+ bool qemu_system_dump_in_progress(void)
+diff --git a/include/qemu/cutils.h b/include/qemu/cutils.h
+index d3e532b64c..7156ebcef5 100644
+--- a/include/qemu/cutils.h
++++ b/include/qemu/cutils.h
+@@ -255,5 +255,4 @@ void qemu_hexdump_line(char *line, unsigned int b, const void *bufptr,
+ 
+ void qemu_hexdump(FILE *fp, const char *prefix,
+                   const void *bufptr, size_t size);
+-
+ #endif
+diff --git a/include/sysemu/dump.h b/include/sysemu/dump.h
+index ffc2ea1072..2c33fe4645 100644
+--- a/include/sysemu/dump.h
++++ b/include/sysemu/dump.h
+@@ -158,6 +158,7 @@ typedef struct DumpState {
+     uint32_t shdr_num;
+     bool resume;
+     bool detached;
++    bool encrypted_guest;
+     ssize_t note_size;
+     hwaddr shdr_offset;
+     hwaddr phdr_offset;
+-- 
+2.31.1
+

@@ -1,0 +1,9 @@
+{
+    "bucket": {
+        "input": "input",
+        "output": "output"
+    },
+    "object": {
+        "key": "bacillus_subtilis.fasta"
+    }
+}

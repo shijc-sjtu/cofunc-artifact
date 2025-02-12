@@ -1,0 +1,117 @@
+From c5692fb0a2561608949ab9b4d90fd2d59adfaf0b Mon Sep 17 00:00:00 2001
+From: Yang Weijiang <weijiang.yang@intel.com>
+Date: Sat, 10 Oct 2020 15:55:45 +0800
+Subject: [PATCH 71/99] target/i386: Add userspace CET MSR access interface
+
+CET userspace state consists of three MSRs:
+MSR_IA32_U_CET - holds CET control bits.
+MSR_IA32_PL3_SSP - holds userspace shadow stack pointer.
+MSR_KVM_GUEST_SSP - holds current shadow stack pointer.
+These MSRs need to be saved/restored during VM migration.
+
+Signed-off-by: Yang Weijiang <weijiang.yang@intel.com>
+---
+ target/i386/cpu.h     | 10 ++++++++++
+ target/i386/kvm/kvm.c | 44 +++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 54 insertions(+)
+
+diff --git a/target/i386/cpu.h b/target/i386/cpu.h
+index 201e242ecf..3102f4e416 100644
+--- a/target/i386/cpu.h
++++ b/target/i386/cpu.h
+@@ -540,6 +540,11 @@ typedef enum X86Seg {
+ #define MSR_IA32_VMX_TRUE_ENTRY_CTLS     0x00000490
+ #define MSR_IA32_VMX_VMFUNC             0x00000491
+ 
++#define MSR_IA32_U_CET                  0x000006a0
++#define MSR_IA32_S_CET                  0x000006a2
++#define MSR_IA32_PL3_SSP                0x000006a7
++#define MSR_KVM_GUEST_SSP               0x4b564d09
++
+ #define XSTATE_FP_BIT                   0
+ #define XSTATE_SSE_BIT                  1
+ #define XSTATE_YMM_BIT                  2
+@@ -1710,6 +1715,11 @@ typedef struct CPUArchState {
+ 
+     uintptr_t retaddr;
+ 
++    uint64_t u_cet;
++    uint64_t s_cet;
++    uint64_t pl3_ssp;
++    uint64_t guest_ssp;
++
+     /* Fields up to this point are cleared by a CPU reset */
+     struct {} end_reset_fields;
+ 
+diff --git a/target/i386/kvm/kvm.c b/target/i386/kvm/kvm.c
+index acd9476832..3710b99e36 100644
+--- a/target/i386/kvm/kvm.c
++++ b/target/i386/kvm/kvm.c
+@@ -3540,6 +3540,22 @@ static int kvm_put_msrs(X86CPU *cpu, int level)
+         }
+     }
+ 
++    if (((env->features[FEAT_7_0_ECX] & CPUID_7_0_ECX_CET_SHSTK) ||
++        (env->features[FEAT_7_0_EDX] & CPUID_7_0_EDX_CET_IBT)) &&
++        (env->features[FEAT_XSAVE_XSS_LO] & XSTATE_CET_U_MASK)) {
++        kvm_msr_entry_add(cpu, MSR_IA32_U_CET, env->u_cet);
++        kvm_msr_entry_add(cpu, MSR_IA32_PL3_SSP, env->pl3_ssp);
++    }
++
++    if ((env->features[FEAT_7_0_ECX] & CPUID_7_0_ECX_CET_SHSTK) &&
++        (env->features[FEAT_XSAVE_XSS_LO] & XSTATE_CET_U_MASK)) {
++        kvm_msr_entry_add(cpu, MSR_KVM_GUEST_SSP, env->guest_ssp);
++    }
++
++    if (env->features[FEAT_7_0_EDX] & CPUID_7_0_EDX_CET_IBT) {
++        kvm_msr_entry_add(cpu, MSR_IA32_S_CET, env->s_cet);
++    }
++
+     return kvm_buf_set_msrs(cpu);
+ }
+ 
+@@ -3918,6 +3934,22 @@ static int kvm_get_msrs(X86CPU *cpu)
+         kvm_msr_entry_add(cpu, MSR_IA32_SGXLEPUBKEYHASH3, 0);
+     }
+ 
++    if (((env->features[FEAT_7_0_ECX] & CPUID_7_0_ECX_CET_SHSTK) ||
++        (env->features[FEAT_7_0_EDX] & CPUID_7_0_EDX_CET_IBT)) &&
++        (env->features[FEAT_XSAVE_XSS_LO] & XSTATE_CET_U_MASK)) {
++        kvm_msr_entry_add(cpu, MSR_IA32_U_CET, 0);
++        kvm_msr_entry_add(cpu, MSR_IA32_PL3_SSP, 0);
++    }
++
++    if ((env->features[FEAT_7_0_ECX] & CPUID_7_0_ECX_CET_SHSTK) &&
++        (env->features[FEAT_XSAVE_XSS_LO] & XSTATE_CET_U_MASK)) {
++        kvm_msr_entry_add(cpu, MSR_KVM_GUEST_SSP, 0);
++    }
++
++    if (env->features[FEAT_7_0_EDX] & CPUID_7_0_EDX_CET_IBT) {
++        kvm_msr_entry_add(cpu, MSR_IA32_S_CET, 0);
++    }
++
+     if (env->features[FEAT_XSAVE] & CPUID_D_1_EAX_XFD) {
+         kvm_msr_entry_add(cpu, MSR_IA32_XFD, 0);
+         kvm_msr_entry_add(cpu, MSR_IA32_XFD_ERR, 0);
+@@ -4240,6 +4272,18 @@ static int kvm_get_msrs(X86CPU *cpu)
+             env->msr_ia32_sgxlepubkeyhash[index - MSR_IA32_SGXLEPUBKEYHASH0] =
+                            msrs[i].data;
+             break;
++        case MSR_IA32_U_CET:
++            env->u_cet = msrs[i].data;
++            break;
++        case MSR_IA32_S_CET:
++            env->s_cet = msrs[i].data;
++            break;
++        case MSR_IA32_PL3_SSP:
++            env->pl3_ssp = msrs[i].data;
++            break;
++        case MSR_KVM_GUEST_SSP:
++            env->guest_ssp = msrs[i].data;
++            break;
+         case MSR_IA32_XFD:
+             env->msr_xfd = msrs[i].data;
+             break;
+-- 
+2.31.1
+

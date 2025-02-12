@@ -1,0 +1,7 @@
+exec_log
+strace*
+.rootfs
+.fc-config
+.fc-rootfs
+__pycache__
+results

@@ -1,0 +1,85 @@
+From 5d64797dd22ee9311b845cc035f42573d83c1ce7 Mon Sep 17 00:00:00 2001
+From: Xiaoyao Li <xiaoyao.li@intel.com>
+Date: Thu, 24 Feb 2022 16:12:36 +0800
+Subject: [PATCH 41/99] i386/tdx: Implement debug property
+
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+---
+ qapi/qom.json         |  5 ++++-
+ target/i386/kvm/tdx.c | 23 +++++++++++++++++++++++
+ 2 files changed, 27 insertions(+), 1 deletion(-)
+
+diff --git a/qapi/qom.json b/qapi/qom.json
+index b0e734a95c..f197cb17dd 100644
+--- a/qapi/qom.json
++++ b/qapi/qom.json
+@@ -837,10 +837,13 @@
+ #
+ # @sept-ve-disable: bit 28 of TD attributes (default: 0)
+ #
++# @debug: Whether it's a debug TD or not (default: 0)
++#
+ # Since: 7.1
+ ##
+ { 'struct': 'TdxGuestProperties',
+-  'data': { '*sept-ve-disable': 'bool' } }
++  'data': { '*sept-ve-disable': 'bool',
++            '*debug': 'bool' } }
+ 
+ ##
+ # @ObjectType:
+diff --git a/target/i386/kvm/tdx.c b/target/i386/kvm/tdx.c
+index 192cdc3e7d..869f216d83 100644
+--- a/target/i386/kvm/tdx.c
++++ b/target/i386/kvm/tdx.c
+@@ -428,10 +428,12 @@ static int tdx_validate_attributes(TdxGuest *tdx)
+             return -EINVAL;
+     }
+ 
++    /*
+     if (tdx->attributes & TDX_TD_ATTRIBUTES_DEBUG) {
+         error_report("Current QEMU doesn't support attributes.debug[bit 0] for TDX VM");
+         return -EINVAL;
+     }
++    */
+ 
+     return 0;
+ }
+@@ -526,6 +528,24 @@ static void tdx_guest_set_sept_ve_disable(Object *obj, bool value, Error **errp)
+     }
+ }
+ 
++static bool tdx_guest_get_debug(Object *obj, Error **errp)
++{
++    TdxGuest *tdx = TDX_GUEST(obj);
++
++    return !!(tdx->attributes & TDX_TD_ATTRIBUTES_DEBUG);
++}
++
++static void tdx_guest_set_debug(Object *obj, bool value, Error **errp)
++{
++    TdxGuest *tdx = TDX_GUEST(obj);
++
++    if (value) {
++        tdx->attributes |= TDX_TD_ATTRIBUTES_DEBUG;
++    } else {
++        tdx->attributes &= ~TDX_TD_ATTRIBUTES_DEBUG;
++    }
++}
++
+ /* tdx guest */
+ OBJECT_DEFINE_TYPE_WITH_INTERFACES(TdxGuest,
+                                    tdx_guest,
+@@ -545,6 +565,9 @@ static void tdx_guest_init(Object *obj)
+     object_property_add_bool(obj, "sept-ve-disable",
+                              tdx_guest_get_sept_ve_disable,
+                              tdx_guest_set_sept_ve_disable);
++    object_property_add_bool(obj, "debug",
++                             tdx_guest_get_debug,
++                             tdx_guest_set_debug);
+ }
+ 
+ static void tdx_guest_finalize(Object *obj)
+-- 
+2.31.1
+

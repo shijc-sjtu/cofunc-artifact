@@ -1,0 +1,49 @@
+From bab37d85c291adb51e65d6f6a04b7fddf95bda4e Mon Sep 17 00:00:00 2001
+From: Yuan Yao <yuan.yao@intel.com>
+Date: Tue, 20 Jul 2021 13:20:13 +0800
+Subject: [PATCH 91/99] i386/kvm: Emulate the #BP injection for INTEL TDX guest
+
+Currently the TDX module doesn't support exception
+injection, but KVM provide way to emulate the #BP
+injection for INTEL TDX guest, so allow QEMU to
+inject the #BP.
+
+Signed-off-by: Yuan Yao <yuan.yao@intel.com>
+---
+ target/i386/kvm/kvm.c | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/target/i386/kvm/kvm.c b/target/i386/kvm/kvm.c
+index 658d1fb298..5b43244382 100644
+--- a/target/i386/kvm/kvm.c
++++ b/target/i386/kvm/kvm.c
+@@ -28,6 +28,7 @@
+ #include "sysemu/hw_accel.h"
+ #include "sysemu/kvm_int.h"
+ #include "sysemu/runstate.h"
++#include "sysemu/tdx.h"
+ #include "kvm_i386.h"
+ #include "sev.h"
+ #include "sysemu/tdx.h"
+@@ -4686,6 +4687,18 @@ int kvm_arch_put_registers(CPUState *cpu, int level)
+ 
+     /* TODO: Allow accessing guest state for debug TDs. */
+     if (is_tdx_vm()) {
++        CPUX86State *env = &x86_cpu->env;
++
++        /*
++         * Inject exception to TD guest is NOT allowed.
++         * Now KVM has workaround to emulate
++         * #BP injection to support GDB stub feature.
++         */
++        if (tdx_debug_enabled() &&
++            (env->exception_pending == 1) &&
++            (env->exception_nr == 3))
++            return kvm_put_vcpu_events(x86_cpu, level);
++
+         return 0;
+     }
+ 
+-- 
+2.31.1
+

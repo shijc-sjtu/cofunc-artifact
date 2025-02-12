@@ -1,0 +1,11 @@
+{
+    "bucket": {
+        "input": "input",
+        "output": "output"
+    },
+    "object": {
+        "key": "sample.jpg",
+        "width": 200,
+        "height": 200
+    }
+}

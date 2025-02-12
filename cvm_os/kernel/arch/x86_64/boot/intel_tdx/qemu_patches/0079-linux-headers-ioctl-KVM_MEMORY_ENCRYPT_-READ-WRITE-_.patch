@@ -1,0 +1,64 @@
+From ae71faa8b54d224c022bcfabf4282e73f8f36f73 Mon Sep 17 00:00:00 2001
+From: Yao Yuan <yuan.yao@intel.com>
+Date: Thu, 14 Apr 2022 14:35:59 +0800
+Subject: [PATCH 79/99] linux-headers: ioctl
+ KVM_MEMORY_ENCRYPT_{READ,WRITE}_MEMORY
+
+Pull only KVM_MEMORY_ENCRYPT_{READ,WRITE}_MEMORY ioctl
+definition to make this series workable.
+
+These ioctl definition should be updated if the kernel
+part is changed to different values.
+
+Signed-off-by: Yao Yuan <yuan.yao@intel.com>
+---
+ linux-headers/asm-x86/kvm.h | 10 ++++++++++
+ linux-headers/linux/kvm.h   |  6 ++++++
+ 2 files changed, 16 insertions(+)
+
+diff --git a/linux-headers/asm-x86/kvm.h b/linux-headers/asm-x86/kvm.h
+index 701bf234eb..c25c96c8ea 100644
+--- a/linux-headers/asm-x86/kvm.h
++++ b/linux-headers/asm-x86/kvm.h
+@@ -624,4 +624,14 @@ struct kvm_tdx_init_mem_region {
+ 	__u64 nr_pages;
+ };
+ 
++struct kvm_rw_memory {
++	/* This can be GPA or HVA */
++	__u64 addr;
++
++	/* This will be updated to completed
++	 * reading/writing byte size when the ioctl return
++	 */
++	__u64 len;
++	__u64 ubuf;
++};
+ #endif /* _ASM_X86_KVM_H */
+diff --git a/linux-headers/linux/kvm.h b/linux-headers/linux/kvm.h
+index adcb051c21..f6790ad8af 100644
+--- a/linux-headers/linux/kvm.h
++++ b/linux-headers/linux/kvm.h
+@@ -1238,6 +1238,8 @@ struct kvm_ppc_resize_hpt {
+ #define KVM_CAP_SYSTEM_EVENT_DATA 215
+ #define KVM_CAP_X86_TRIPLE_FAULT_EVENT 218
+ #define KVM_CAP_X86_NOTIFY_VMEXIT 219
++#define KVM_CAP_ENCRYPT_MEMORY_DEBUG 300
++
+ #define KVM_CAP_VM_TYPES 1000
+ 
+ #ifdef KVM_CAP_IRQ_ROUTING
+@@ -1867,6 +1869,10 @@ struct kvm_xen_vcpu_attr {
+ #define KVM_XEN_VCPU_ATTR_TYPE_TIMER		0x7
+ #define KVM_XEN_VCPU_ATTR_TYPE_UPCALL_VECTOR	0x8
+ 
++/* Read/write encrypted guest memory, for guest debugging support in QEMU*/
++#define KVM_MEMORY_ENCRYPT_READ_MEMORY   _IOWR(KVMIO, 0xcc, struct kvm_rw_memory)
++#define KVM_MEMORY_ENCRYPT_WRITE_MEMORY  _IOWR(KVMIO, 0xcd, struct kvm_rw_memory)
++
+ /* Secure Encrypted Virtualization command */
+ enum sev_cmd_id {
+ 	/* Guest initialization commands */
+-- 
+2.31.1
+

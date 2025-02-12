@@ -1,0 +1,58 @@
+From 32de0a4ef154bf25371b99d04930493315769891 Mon Sep 17 00:00:00 2001
+From: Isaku Yamahata <isaku.yamahata@intel.com>
+Date: Wed, 9 Mar 2022 11:49:19 -0800
+Subject: [PATCH 48/99] i386/TDX: Make GetQuote conform better to GHCI with new
+ error codes
+
+GHCI defines TDG.VP.VMCALL_RETRY and TDG.VP.VMCALL_ALIGN_ERROR. On GetQuote
+request,
+- If shared GPA isn't 4K-aligned, return TDG.VP.VMCALL_ALIGN_ERROR.
+- If QGS address isn't defined, return TDG.VP.VMCALL_RETRY.
+- If too many GetQuote requests are in flight, return TDG.VP.VMCALL_RETRY.
+
+Signed-off-by: Isaku Yamahata <isaku.yamahata@intel.com>
+---
+ target/i386/kvm/tdx.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/target/i386/kvm/tdx.c b/target/i386/kvm/tdx.c
+index b83b557493..477d9e05d7 100644
+--- a/target/i386/kvm/tdx.c
++++ b/target/i386/kvm/tdx.c
+@@ -624,7 +624,9 @@ static void tdx_guest_class_init(ObjectClass *oc, void *data)
+ #define TDG_VP_VMCALL_SETUP_EVENT_NOTIFY_INTERRUPT      0x10004ULL
+ 
+ #define TDG_VP_VMCALL_SUCCESS           0x0000000000000000ULL
++#define TDG_VP_VMCALL_RETRY             0x0000000000000001ULL
+ #define TDG_VP_VMCALL_INVALID_OPERAND   0x8000000000000000ULL
++#define TDG_VP_VMCALL_ALIGN_ERROR       0x8000000000000002ULL
+ 
+ #define TDX_GET_QUOTE_STRUCTURE_VERSION 1ULL
+ 
+@@ -872,6 +874,7 @@ static void tdx_handle_get_quote(X86CPU *cpu, struct kvm_tdx_vmcall *vmcall)
+     vmcall->status_code = TDG_VP_VMCALL_INVALID_OPERAND;
+ 
+     if (!QEMU_IS_ALIGNED(gpa, 4096)) {
++        vmcall->status_code = TDG_VP_VMCALL_ALIGN_ERROR;
+         return;
+     }
+ 
+@@ -908,10 +911,15 @@ static void tdx_handle_get_quote(X86CPU *cpu, struct kvm_tdx_vmcall *vmcall)
+     t->ioc = ioc;
+ 
+     qemu_mutex_lock(&tdx->lock);
++    /*
++     * If Quote Generation Service(QGS) isn't unavailable, return RETRY in the
++     * expectation that the cloud admin will set later.
++     */
+     if (!tdx->quote_generation ||
+         /* Prevent too many in-flight get-quote request. */
+         tdx->quote_generation_num >= TDX_MAX_GET_QUOTE_REQUEST) {
+         qemu_mutex_unlock(&tdx->lock);
++        vmcall->status_code = TDG_VP_VMCALL_RETRY;
+         object_unref(OBJECT(ioc));
+         g_free(t);
+         return;
+-- 
+2.31.1
+

@@ -1,0 +1,67 @@
+From 07b3257d6303fb86fd1a2e73f324a96f1b7fdb78 Mon Sep 17 00:00:00 2001
+From: Xiaoyao Li <xiaoyao.li@intel.com>
+Date: Wed, 23 Feb 2022 22:20:59 +0800
+Subject: [PATCH 53/99] [REVERTME] i386/tdx: workaround for
+ KVM_TDX_CAPABILITIES scope change
+
+KVM_TDX_CAPABILITIES is changed from VM scope to back to KVM scope.
+
+To keep qemu works with the both ABI, add workaround for this change.
+Try KVM scope IOCTL first, and then VM scope if it fails.
+
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+---
+ target/i386/kvm/tdx.c | 30 ++++++++++++++++++++++++++++++
+ 1 file changed, 30 insertions(+)
+
+diff --git a/target/i386/kvm/tdx.c b/target/i386/kvm/tdx.c
+index 2e558d165b..ec2511954f 100644
+--- a/target/i386/kvm/tdx.c
++++ b/target/i386/kvm/tdx.c
+@@ -120,6 +120,11 @@ static void get_tdx_capabilities(void)
+         caps->nr_cpuid_configs = nr_cpuid_configs;
+ 
+         r = tdx_platform_ioctl(KVM_TDX_CAPABILITIES, 0, caps);
++        if (r == -EINVAL ) {
++            g_free(caps);
++            break;
++        }
++
+         if (r == -E2BIG) {
+             g_free(caps);
+             nr_cpuid_configs *= 2;
+@@ -135,6 +140,31 @@ static void get_tdx_capabilities(void)
+     }
+     while (r == -E2BIG);
+ 
++    if (r == -EINVAL) {
++        nr_cpuid_configs = 6;
++        do {
++            size = sizeof(struct kvm_tdx_capabilities) +
++                nr_cpuid_configs * sizeof(struct kvm_tdx_cpuid_config);
++            caps = g_malloc0(size);
++            caps->nr_cpuid_configs = nr_cpuid_configs;
++
++            r = tdx_vm_ioctl(KVM_TDX_CAPABILITIES, 0, caps);
++            if (r == -E2BIG) {
++                g_free(caps);
++                if (nr_cpuid_configs > KVM_MAX_CPUID_ENTRIES) {
++                    error_report("KVM TDX seems broken");
++                    exit(1);
++                }
++                nr_cpuid_configs *= 2;
++            } else if (r < 0) {
++                g_free(caps);
++                error_report("KVM_TDX_CAPABILITIES failed: %s\n", strerror(-r));
++                exit(1);
++            }
++        }
++        while (r == -E2BIG);
++    }
++
+     tdx_caps = caps;
+ }
+ 
+-- 
+2.31.1
+

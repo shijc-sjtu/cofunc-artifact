@@ -1,0 +1,103 @@
+From 2de98214bcc8a06ebbe9efd1445ae54fb0570164 Mon Sep 17 00:00:00 2001
+From: Isaku Yamahata <isaku.yamahata@intel.com>
+Date: Wed, 14 Apr 2021 12:17:51 -0700
+Subject: [PATCH 43/99] i386/tdx: Allows mrconfigid/mrowner/mrownerconfig for
+ TDX_INIT_VM
+
+When creating TDX vm, three sha384 hash values can be provided for
+TDX attestation.
+
+So far they were hard coded as 0. Now allow user to specify those values
+via property mrconfigid, mrowner and mrownerconfig. String for those
+properties are hex string of 48 * 2 length.
+
+example
+-object tdx-guest, \
+  mrconfigid=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef, \
+  mrowner=fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210, \
+  mrownerconfig=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+
+Signed-off-by: Isaku Yamahata <isaku.yamahata@intel.com>
+---
+TODO:
+ - community requests to use base64 encoding if no special reason
+---
+ qapi/qom.json         | 11 ++++++++++-
+ target/i386/kvm/tdx.c | 13 +++++++++++++
+ target/i386/kvm/tdx.h |  3 +++
+ 3 files changed, 26 insertions(+), 1 deletion(-)
+
+diff --git a/qapi/qom.json b/qapi/qom.json
+index f197cb17dd..c73c7f6217 100644
+--- a/qapi/qom.json
++++ b/qapi/qom.json
+@@ -839,11 +839,20 @@
+ #
+ # @debug: Whether it's a debug TD or not (default: 0)
+ #
++# @mrconfigid: MRCONFIGID SHA384 hex string of 48 * 2 length (default: 0)
++#
++# @mrowner: MROWNER SHA384 hex string of 48 * 2 length (default: 0)
++#
++# @mrownerconfig: MROWNERCONFIG SHA384 hex string of 48 * 2 length (default: 0)
++#
+ # Since: 7.1
+ ##
+ { 'struct': 'TdxGuestProperties',
+   'data': { '*sept-ve-disable': 'bool',
+-            '*debug': 'bool' } }
++            '*debug': 'bool',
++            '*mrconfigid': 'str',
++            '*mrowner': 'str',
++            '*mrownerconfig': 'str' } }
+ 
+ ##
+ # @ObjectType:
+diff --git a/target/i386/kvm/tdx.c b/target/i386/kvm/tdx.c
+index 869f216d83..889f2c2962 100644
+--- a/target/i386/kvm/tdx.c
++++ b/target/i386/kvm/tdx.c
+@@ -493,6 +493,13 @@ int tdx_pre_create_vcpu(CPUState *cpu)
+     init_vm.attributes = tdx_guest->attributes;
+     init_vm.max_vcpus = ms->smp.cpus;
+ 
++    QEMU_BUILD_BUG_ON(sizeof(init_vm.mrconfigid) != sizeof(tdx_guest->mrconfigid));
++    QEMU_BUILD_BUG_ON(sizeof(init_vm.mrowner) != sizeof(tdx_guest->mrowner));
++    QEMU_BUILD_BUG_ON(sizeof(init_vm.mrownerconfig) != sizeof(tdx_guest->mrownerconfig));
++    memcpy(init_vm.mrconfigid, tdx_guest->mrconfigid, sizeof(init_vm.mrconfigid));
++    memcpy(init_vm.mrowner, tdx_guest->mrowner, sizeof(init_vm.mrowner));
++    memcpy(init_vm.mrownerconfig, tdx_guest->mrownerconfig, sizeof(init_vm.mrownerconfig));
++
+     r = tdx_vm_ioctl(KVM_TDX_INIT_VM, 0, &init_vm);
+     if (r < 0) {
+         error_report("KVM_TDX_INIT_VM failed %s", strerror(-r));
+@@ -568,6 +575,12 @@ static void tdx_guest_init(Object *obj)
+     object_property_add_bool(obj, "debug",
+                              tdx_guest_get_debug,
+                              tdx_guest_set_debug);
++    object_property_add_sha384(obj, "mrconfigid", tdx->mrconfigid,
++                               OBJ_PROP_FLAG_READWRITE);
++    object_property_add_sha384(obj, "mrowner", tdx->mrowner,
++                               OBJ_PROP_FLAG_READWRITE);
++    object_property_add_sha384(obj, "mrownerconfig", tdx->mrownerconfig,
++                               OBJ_PROP_FLAG_READWRITE);
+ }
+ 
+ static void tdx_guest_finalize(Object *obj)
+diff --git a/target/i386/kvm/tdx.h b/target/i386/kvm/tdx.h
+index 5792518afa..9b3c427766 100644
+--- a/target/i386/kvm/tdx.h
++++ b/target/i386/kvm/tdx.h
+@@ -33,6 +33,9 @@ typedef struct TdxGuest {
+ 
+     bool initialized;
+     uint64_t attributes;    /* TD attributes */
++    uint8_t mrconfigid[48];     /* sha348 digest */
++    uint8_t mrowner[48];        /* sha348 digest */
++    uint8_t mrownerconfig[48];  /* sha348 digest */
+ 
+     TdxFirmware tdvf;
+ 
+-- 
+2.31.1
+

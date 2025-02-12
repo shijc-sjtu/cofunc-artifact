@@ -1,0 +1,7 @@
+{
+    "COUCHDB_URL": "http://admin:password@hostname:5984",
+    "COUCHDB_DATABASE": "wage",
+    "wage-person": {
+        "operator": 1
+    }
+}

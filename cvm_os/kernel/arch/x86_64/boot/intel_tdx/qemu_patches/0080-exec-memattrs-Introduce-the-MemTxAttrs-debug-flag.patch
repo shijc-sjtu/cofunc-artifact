@@ -1,0 +1,41 @@
+From 54cf0af3136904c7dabb5313bd9560a7f0818409 Mon Sep 17 00:00:00 2001
+From: Brijesh Singh <brijesh.singh@amd.com>
+Date: Thu, 1 Jul 2021 09:06:57 +0800
+Subject: [PATCH 80/99] exec/memattrs: Introduce the MemTxAttrs::debug flag
+
+Extend the MemTxAttrs to include a 'debug' flag. The flag can
+be used as general indicator that operation was triggered by
+the debugger.
+
+A subsequent patch will set the debug=1 when issuing a memory
+access from the gdbstub or HMP commands. This is a prerequisite
+to support debugging an encrypted guest. When a request with
+debug=1 is seen, the encryption APIs will be used to access the
+guest memory.
+
+Yuan Yao:
+  - refactor the too long subject line
+
+Signed-off-by: Brijesh Singh <brijesh.singh@amd.com>
+Signed-off-by: Ashish Kalra <ashish.kalra@amd.com>
+Signed-off-by: Yuan Yao <yuan.yao@intel.com>
+---
+ include/exec/memattrs.h | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/include/exec/memattrs.h b/include/exec/memattrs.h
+index 9fb98bc1ef..122b4419ff 100644
+--- a/include/exec/memattrs.h
++++ b/include/exec/memattrs.h
+@@ -57,6 +57,8 @@ typedef struct MemTxAttrs {
+     unsigned int target_tlb_bit0 : 1;
+     unsigned int target_tlb_bit1 : 1;
+     unsigned int target_tlb_bit2 : 1;
++    /* Memory access request from the debugger */
++    unsigned int debug:1;
+ } MemTxAttrs;
+ 
+ /* Bus masters which don't specify any attributes will get this,
+-- 
+2.31.1
+

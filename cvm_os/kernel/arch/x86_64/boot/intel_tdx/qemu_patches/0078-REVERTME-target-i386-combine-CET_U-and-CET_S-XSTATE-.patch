@@ -1,0 +1,64 @@
+From 4ca08cd1816e0eee21b55c2223b2bafbdcc376d1 Mon Sep 17 00:00:00 2001
+From: Chenyi Qiang <chenyi.qiang@intel.com>
+Date: Thu, 7 Jul 2022 10:41:39 +0800
+Subject: [PATCH 78/99] [REVERTME] target/i386: combine CET_U and CET_S XSTATE
+ MASK in TDX VM
+
+TDX module requires CET_U and CET_S to be either 00b or 11b. Forcefully
+set both bits if either of them is required as a workaround.
+
+Signed-off-by: Chenyi Qiang <chenyi.qiang@intel.com>
+---
+ target/i386/cpu.c | 8 ++++++++
+ target/i386/cpu.h | 2 ++
+ 2 files changed, 10 insertions(+)
+
+diff --git a/target/i386/cpu.c b/target/i386/cpu.c
+index 68bfa3cc4a..73ff67639a 100644
+--- a/target/i386/cpu.c
++++ b/target/i386/cpu.c
+@@ -39,6 +39,7 @@
+ #include "exec/address-spaces.h"
+ #include "hw/boards.h"
+ #include "hw/i386/sgx-epc.h"
++#include "kvm/tdx.h"
+ #endif
+ 
+ #include "disas/capstone.h"
+@@ -5519,6 +5520,13 @@ void cpu_x86_cpuid(CPUX86State *env, uint32_t index, uint32_t count,
+             } else {
+                 *ecx &= ~XSTATE_ARCH_LBR_MASK;
+             }
++#ifndef CONFIG_USER_ONLY
++#define TDX_TD_XFAM_CET         (XSTATE_CET_U_MASK | XSTATE_CET_S_MASK)
++            if (is_tdx_vm() &&
++                (*ecx & TDX_TD_XFAM_CET)) {
++                *ecx |= TDX_TD_XFAM_CET;
++            }
++#endif
+         } else if (count == 0xf &&
+                    accel_uses_host_cpuid() && cpu->enable_pmu &&
+                    (env->features[FEAT_7_0_EDX] & CPUID_7_0_EDX_ARCH_LBR)) {
+diff --git a/target/i386/cpu.h b/target/i386/cpu.h
+index 8cf09a282d..576a151c0c 100644
+--- a/target/i386/cpu.h
++++ b/target/i386/cpu.h
+@@ -555,6 +555,7 @@ typedef enum X86Seg {
+ #define XSTATE_Hi16_ZMM_BIT             7
+ #define XSTATE_PKRU_BIT                 9
+ #define XSTATE_CET_U_BIT                11
++#define XSTATE_CET_S_BIT                12
+ #define XSTATE_ARCH_LBR_BIT             15
+ #define XSTATE_XTILE_CFG_BIT            17
+ #define XSTATE_XTILE_DATA_BIT           18
+@@ -569,6 +570,7 @@ typedef enum X86Seg {
+ #define XSTATE_Hi16_ZMM_MASK            (1ULL << XSTATE_Hi16_ZMM_BIT)
+ #define XSTATE_PKRU_MASK                (1ULL << XSTATE_PKRU_BIT)
+ #define XSTATE_CET_U_MASK               (1ULL << XSTATE_CET_U_BIT)
++#define XSTATE_CET_S_MASK               (1ULL << XSTATE_CET_S_BIT)
+ #define XSTATE_ARCH_LBR_MASK            (1ULL << XSTATE_ARCH_LBR_BIT)
+ #define XSTATE_XTILE_CFG_MASK           (1ULL << XSTATE_XTILE_CFG_BIT)
+ #define XSTATE_XTILE_DATA_MASK          (1ULL << XSTATE_XTILE_DATA_BIT)
+-- 
+2.31.1
+

@@ -1,0 +1,18 @@
+{
+    "COUCHDB_URL": "http://admin:password@hostname:5984",
+    "COUCHDB_DATABASE_STATISTICS": "wage-statistics",
+    "statistics": {
+        "total": 16500469,
+        "average-realpay": {
+          "staff": 7005.604593611111,
+          "teamleader": 25212.52455867508,
+          "manager": 12091.52603993808
+        },
+        "average-merit-percent": {
+          "staff": 0.4575272222222222,
+          "teamleader": 2.2784412460567824,
+          "manager": 0.5722883126934984
+        }
+      },
+      "operator": 1
+}

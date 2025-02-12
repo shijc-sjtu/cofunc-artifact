@@ -1,0 +1,58 @@
+From deadeeca49d4b7348804cc74bf1c173b45be0606 Mon Sep 17 00:00:00 2001
+From: Yang Weijiang <weijiang.yang@intel.com>
+Date: Sat, 10 Oct 2020 16:04:57 +0800
+Subject: [PATCH 73/99] target/i386: Advertise CET bits in feature words
+
+CET SHSTK and IBT feature are enumerated via CPUID.(7,0):ECX[7]
+and EDX[20]. CET state load/restore at vmentry/vmexit are controlled
+through VMX_ENTRY_CTLS[20] and VMX_EXIT_CTLS[28]. Enable these bits
+so that KVM can act and expose the feature to guest properly.
+
+Signed-off-by: Yang Weijiang <weijiang.yang@intel.com>
+---
+ target/i386/cpu.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/target/i386/cpu.c b/target/i386/cpu.c
+index a1f193c662..d5ea60d55a 100644
+--- a/target/i386/cpu.c
++++ b/target/i386/cpu.c
+@@ -833,7 +833,7 @@ FeatureWordInfo feature_word_info[FEATURE_WORDS] = {
+         .type = CPUID_FEATURE_WORD,
+         .feat_names = {
+             NULL, "avx512vbmi", "umip", "pku",
+-            NULL /* ospke */, "waitpkg", "avx512vbmi2", NULL,
++            NULL /* ospke */, "waitpkg", "avx512vbmi2", "shstk",
+             "gfni", "vaes", "vpclmulqdq", "avx512vnni",
+             "avx512bitalg", NULL, "avx512-vpopcntdq", NULL,
+             "la57", NULL, NULL, NULL,
+@@ -856,7 +856,7 @@ FeatureWordInfo feature_word_info[FEATURE_WORDS] = {
+             "avx512-vp2intersect", NULL, "md-clear", NULL,
+             NULL, NULL, "serialize", NULL,
+             "tsx-ldtrk", NULL, NULL /* pconfig */, "arch-lbr",
+-            NULL, NULL, "amx-bf16", "avx512-fp16",
++            "ibt", NULL, "amx-bf16", "avx512-fp16",
+             "amx-tile", "amx-int8", "spec-ctrl", "stibp",
+             NULL, "arch-capabilities", "core-capability", "ssbd",
+         },
+@@ -1118,7 +1118,7 @@ FeatureWordInfo feature_word_info[FEATURE_WORDS] = {
+             "vmx-exit-save-efer", "vmx-exit-load-efer",
+                 "vmx-exit-save-preemption-timer", "vmx-exit-clear-bndcfgs",
+             NULL, "vmx-exit-clear-rtit-ctl", NULL, NULL,
+-            NULL, "vmx-exit-load-pkrs", NULL, NULL,
++            "vmx-exit-save-cet-ctl", "vmx-exit-load-pkrs", NULL, NULL,
+         },
+         .msr = {
+             .index = MSR_IA32_VMX_TRUE_EXIT_CTLS,
+@@ -1133,7 +1133,7 @@ FeatureWordInfo feature_word_info[FEATURE_WORDS] = {
+             NULL, "vmx-entry-ia32e-mode", NULL, NULL,
+             NULL, "vmx-entry-load-perf-global-ctrl", "vmx-entry-load-pat", "vmx-entry-load-efer",
+             "vmx-entry-load-bndcfgs", NULL, "vmx-entry-load-rtit-ctl", NULL,
+-            NULL, NULL, "vmx-entry-load-pkrs", NULL,
++            "vmx-entry-load-cet-ctl", NULL, "vmx-entry-load-pkrs", NULL,
+             NULL, NULL, NULL, NULL,
+             NULL, NULL, NULL, NULL,
+         },
+-- 
+2.31.1
+

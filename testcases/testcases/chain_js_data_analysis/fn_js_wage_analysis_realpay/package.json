@@ -1,0 +1,10 @@
+{
+        "name": "func",
+        "version": "1.0.0",
+        "description": "",
+        "author": "",
+        "license": "",
+        "dependencies": {
+                "request": "^2.88.0"
+        }
+}

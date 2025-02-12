@@ -1,0 +1,165 @@
+diff --git a/accel/kvm/kvm-all.c b/accel/kvm/kvm-all.c
+index da9f1f8..522630a 100644
+--- a/accel/kvm/kvm-all.c
++++ b/accel/kvm/kvm-all.c
+@@ -50,6 +50,7 @@
+ 
+ #include "hw/boards.h"
+ #include "monitor/stats.h"
++#include "split_container.h"
+ 
+ /* This check must be after config-host.h is included */
+ #ifdef CONFIG_EVENTFD
+@@ -2377,7 +2378,7 @@ static int kvm_init(MachineState *ms)
+     }
+ 
+     do {
+-        ret = kvm_ioctl(s, KVM_CREATE_VM, type);
++        ret = kvm_ioctl(s, KVM_CREATE_VM, type | KVM_VM_TYPE_SC_MASK);
+     } while (ret == -EINTR);
+ 
+     if (ret < 0) {
+diff --git a/chardev/char-mux.c b/chardev/char-mux.c
+index ee2d47b..754285a 100644
+--- a/chardev/char-mux.c
++++ b/chardev/char-mux.c
+@@ -159,6 +159,7 @@ static int mux_proc_byte(Chardev *chr, MuxChardev *d, int ch)
+                  const char *term =  "QEMU: Terminated\n\r";
+                  qemu_chr_write_all(chr, (uint8_t *)term, strlen(term));
+                  qmp_quit(NULL);
++                 exit(0);
+                  break;
+             }
+         case 's':
+diff --git a/include/split_container.h b/include/split_container.h
+new file mode 100644
+index 0000000..be83b32
+--- /dev/null
++++ b/include/split_container.h
+@@ -0,0 +1,8 @@
++#pragma once
++
++#define KVM_HC_SC_VCPU_IDLE     100
++#define KVM_HC_SC_REQUEST       101
++
++#define KVM_VM_TYPE_SC_MASK     0x80000000U
++
++#define SC_REQ_DEBUG_PUTC   1
+\ No newline at end of file
+diff --git a/target/i386/kvm/kvm.c b/target/i386/kvm/kvm.c
+index 712cc2a..ac5f58c 100644
+--- a/target/i386/kvm/kvm.c
++++ b/target/i386/kvm/kvm.c
+@@ -54,6 +54,7 @@
+ #include "migration/blocker.h"
+ #include "exec/memattrs.h"
+ #include "trace.h"
++#include "split_container.h"
+ 
+ #include CONFIG_DEVICES
+ 
+@@ -5021,6 +5022,12 @@ static int kvm_handle_exit_hypercall(X86CPU *cpu, struct kvm_run *run)
+ 
+         trace_kvm_hc_map_range(gpa, npages, enc);
+         kvm_convert_memory(gpa, npages * 4096, enc, false);
++    } else if (run->hypercall.nr == KVM_HC_SC_VCPU_IDLE) {
++        pthread_exit(0);
++    } else {
++        assert(run->hypercall.args[0] == SC_REQ_DEBUG_PUTC);
++        putchar(run->hypercall.args[1]);
++        fflush(stdout);
+     }
+     return 0;
+ }
+diff --git a/accel/kvm/kvm-all.c b/accel/kvm/kvm-all.c
+index da9f1f8a62..0dc7048381 100644
+--- a/accel/kvm/kvm-all.c
++++ b/accel/kvm/kvm-all.c
+@@ -50,6 +50,8 @@
+ 
+ #include "hw/boards.h"
+ #include "monitor/stats.h"
++#include "split_container.h"
++#include <stdlib.h>
+ 
+ /* This check must be after config-host.h is included */
+ #ifdef CONFIG_EVENTFD
+@@ -2312,6 +2314,8 @@ static int kvm_init(MachineState *ms)
+     int ret;
+     int type = 0;
+     uint64_t dirty_log_manual_caps;
++    char *env_slot_id;
++    unsigned int slot_id;
+ 
+     qemu_mutex_init(&kml_slots_lock);
+ 
+@@ -2376,8 +2380,16 @@ static int kvm_init(MachineState *ms)
+         type = mc->kvm_type(ms, NULL);
+     }
+ 
++    env_slot_id = getenv("SLOT_ID");
++    if (!env_slot_id) {
++        slot_id = 0;
++    } else {
++        slot_id = atoi(env_slot_id);
++    }
++    printf("slot id: %u\n", slot_id);
++
+     do {
+-        ret = kvm_ioctl(s, KVM_CREATE_VM, type);
++        ret = kvm_ioctl(s, KVM_CREATE_VM, type | (((slot_id + 1) & 0xff) << 24));
+     } while (ret == -EINTR);
+ 
+     if (ret < 0) {
+diff --git a/chardev/char-mux.c b/chardev/char-mux.c
+index ee2d47b20d..754285a734 100644
+--- a/chardev/char-mux.c
++++ b/chardev/char-mux.c
+@@ -159,6 +159,7 @@ static int mux_proc_byte(Chardev *chr, MuxChardev *d, int ch)
+                  const char *term =  "QEMU: Terminated\n\r";
+                  qemu_chr_write_all(chr, (uint8_t *)term, strlen(term));
+                  qmp_quit(NULL);
++                 exit(0);
+                  break;
+             }
+         case 's':
+diff --git a/include/split_container.h b/include/split_container.h
+new file mode 100644
+index 0000000000..be83b323c1
+--- /dev/null
++++ b/include/split_container.h
+@@ -0,0 +1,8 @@
++#pragma once
++
++#define KVM_HC_SC_VCPU_IDLE     100
++#define KVM_HC_SC_REQUEST       101
++
++#define KVM_VM_TYPE_SC_MASK     0x80000000U
++
++#define SC_REQ_DEBUG_PUTC   1
+\ No newline at end of file
+diff --git a/target/i386/kvm/kvm.c b/target/i386/kvm/kvm.c
+index 712cc2a47b..ac5f58c795 100644
+--- a/target/i386/kvm/kvm.c
++++ b/target/i386/kvm/kvm.c
+@@ -54,6 +54,7 @@
+ #include "migration/blocker.h"
+ #include "exec/memattrs.h"
+ #include "trace.h"
++#include "split_container.h"
+ 
+ #include CONFIG_DEVICES
+ 
+@@ -5021,6 +5022,12 @@ static int kvm_handle_exit_hypercall(X86CPU *cpu, struct kvm_run *run)
+ 
+         trace_kvm_hc_map_range(gpa, npages, enc);
+         kvm_convert_memory(gpa, npages * 4096, enc, false);
++    } else if (run->hypercall.nr == KVM_HC_SC_VCPU_IDLE) {
++        pthread_exit(0);
++    } else {
++        assert(run->hypercall.args[0] == SC_REQ_DEBUG_PUTC);
++        putchar(run->hypercall.args[1]);
++        fflush(stdout);
+     }
+     return 0;
+ }

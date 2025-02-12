@@ -1,0 +1,109 @@
+From cab3ee56a790c7c6cc6ac9817186e342f0ed8780 Mon Sep 17 00:00:00 2001
+From: Ashish Kalra <ashish.kalra@amd.com>
+Date: Thu, 1 Jul 2021 09:07:02 +0800
+Subject: [PATCH 85/99] softmmu/physmem: Introduce virtual/physical guest
+ memory debug interface
+
+The new interface MemoryDebugOps which hook into guest virtual
+and physical memory debug interfaces such as cpu_memory_rw_debug,
+to allow vendor specific assist/hooks for debugging and
+delegating accessing the guest memory. This is required for
+example in case of AMD SEV platform where the guest memory
+is encrypted and a SEV specific debug assist/hook will be
+required to access the guest memory.
+
+The MemoryDebugOps are used by cpu_memory_rw_debug() and
+default to address_space_read and address_space_write_rom.
+
+Yuan Yao:
+  - Exports the physical_memory_debug_ops variable for functions
+    in target/i386/helper.c
+  - Refactor the too long subject line
+
+Signed-off-by: Ashish Kalra <ashish.kalra@amd.com>
+Signed-off-by: Yuan Yao <yuan.yao@intel.com>
+---
+ include/exec/memory.h | 14 ++++++++++++++
+ softmmu/physmem.c     | 26 ++++++++++++++++++++++----
+ 2 files changed, 36 insertions(+), 4 deletions(-)
+
+diff --git a/include/exec/memory.h b/include/exec/memory.h
+index 0d67fde281..501c3c2bc6 100644
+--- a/include/exec/memory.h
++++ b/include/exec/memory.h
+@@ -2876,6 +2876,20 @@ MemTxResult address_space_write_cached_slow(MemoryRegionCache *cache,
+ int memory_access_size(MemoryRegion *mr, unsigned l, hwaddr addr);
+ bool prepare_mmio_access(MemoryRegion *mr);
+ 
++typedef struct MemoryDebugOps {
++    MemTxResult (*read)(AddressSpace *as, hwaddr phys_addr,
++                        MemTxAttrs attrs, void *buf,
++                        hwaddr len);
++    MemTxResult (*write)(AddressSpace *as, hwaddr phys_addr,
++                         MemTxAttrs attrs, const void *buf,
++                         hwaddr len);
++} MemoryDebugOps;
++
++/* Export for functions in target/i386/helper.c */
++extern const MemoryDebugOps *physical_memory_debug_ops;
++
++void address_space_set_debug_ops(const MemoryDebugOps *ops);
++
+ static inline bool memory_access_is_direct(MemoryRegion *mr, bool is_write)
+ {
+     if (is_write) {
+diff --git a/softmmu/physmem.c b/softmmu/physmem.c
+index 6a5f2bd692..fc81014da7 100644
+--- a/softmmu/physmem.c
++++ b/softmmu/physmem.c
+@@ -170,6 +170,18 @@ struct DirtyBitmapSnapshot {
+     unsigned long dirty[];
+ };
+ 
++static const MemoryDebugOps default_debug_ops = {
++    .read = address_space_read,
++    .write = address_space_write_rom
++};
++
++const MemoryDebugOps *physical_memory_debug_ops = &default_debug_ops;
++
++void address_space_set_debug_ops(const MemoryDebugOps *ops)
++{
++    physical_memory_debug_ops = ops;
++}
++
+ static void phys_map_node_reserve(PhysPageMap *map, unsigned nodes)
+ {
+     static unsigned alloc_hint = 16;
+@@ -3498,6 +3510,10 @@ int cpu_memory_rw_debug(CPUState *cpu, vaddr addr,
+         page = addr & TARGET_PAGE_MASK;
+         phys_addr = cpu_get_phys_page_attrs_debug(cpu, page, &attrs);
+         asidx = cpu_asidx_from_attrs(cpu, attrs);
++
++        /* set debug attrs to indicate memory access is from the debugger */
++        attrs.debug = 1;
++
+         /* if no physical page mapped, return an error */
+         if (phys_addr == -1)
+             return -1;
+@@ -3506,11 +3522,13 @@ int cpu_memory_rw_debug(CPUState *cpu, vaddr addr,
+             l = len;
+         phys_addr += (addr & ~TARGET_PAGE_MASK);
+         if (is_write) {
+-            res = address_space_write_rom(cpu->cpu_ases[asidx].as, phys_addr,
+-                                          attrs, buf, l);
++            res = physical_memory_debug_ops->write(cpu->cpu_ases[asidx].as,
++                                                   phys_addr,
++                                                   attrs, buf, l);
+         } else {
+-            res = address_space_read(cpu->cpu_ases[asidx].as, phys_addr,
+-                                     attrs, buf, l);
++            res = physical_memory_debug_ops->read(cpu->cpu_ases[asidx].as,
++                                                  phys_addr,
++                                                  attrs, buf, l);
+         }
+         if (res != MEMTX_OK) {
+             return -1;
+-- 
+2.31.1
+

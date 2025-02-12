@@ -1,0 +1,37 @@
+From a83251b6946f18ea6004e4433764008a9965afc7 Mon Sep 17 00:00:00 2001
+From: Isaku Yamahata <isaku.yamahata@intel.com>
+Date: Thu, 14 Apr 2022 02:02:37 -0700
+Subject: [PATCH 66/99] KVM: print flag when reporting error of
+ KVM_SET_USER_MEMORY_REGION
+
+Now KVM_SET_USER_MEMORY_REGION supports PRIVATE flag.  When reporting error
+of KVM_SET_USER_MEMORY_REGION, print flags for debug.
+
+Signed-off-by: Isaku Yamahata <isaku.yamahata@intel.com>
+---
+ accel/kvm/kvm-all.c | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/accel/kvm/kvm-all.c b/accel/kvm/kvm-all.c
+index 24725339a2..62d6c42976 100644
+--- a/accel/kvm/kvm-all.c
++++ b/accel/kvm/kvm-all.c
+@@ -390,9 +390,13 @@ err:
+                               mem.region.userspace_addr, ret);
+     if (ret < 0) {
+         error_report("%s: KVM_SET_USER_MEMORY_REGION failed, slot=%d,"
+-                     " start=0x%" PRIx64 ", size=0x%" PRIx64 ": %s",
++                     " start=0x%" PRIx64 ", size=0x%" PRIx64 ","
++                     " flags=0x%" PRIx32 ","
++                     " private_fd=%" PRId32 ", private_offset=0x%" PRIx64 ": %s",
+                      __func__, mem.region.slot, slot->start_addr,
+-                     (uint64_t)mem.region.memory_size, strerror(errno));
++                     (uint64_t)mem.region.memory_size, mem.region.flags,
++                     mem.private_fd, (uint64_t)mem.private_offset,
++                     strerror(errno));
+     }
+     return ret;
+ }
+-- 
+2.31.1
+

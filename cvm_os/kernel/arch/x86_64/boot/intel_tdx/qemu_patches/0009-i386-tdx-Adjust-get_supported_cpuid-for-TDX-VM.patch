@@ -1,0 +1,161 @@
+From 5178359de31a560e5ca12a96e75c754a3f22e339 Mon Sep 17 00:00:00 2001
+From: Xiaoyao Li <xiaoyao.li@intel.com>
+Date: Tue, 14 Dec 2021 14:11:04 +0800
+Subject: [PATCH 09/99] i386/tdx: Adjust get_supported_cpuid() for TDX VM
+
+For TDX, the allowable CPUID configuration differs from what KVM
+reports for KVM scope via KVM_GET_SUPPORTED_CPUID.
+
+- Some CPUID bits are not supported for TDX VM while KVM reports the
+  support. Mask them off for TDX VM. e.g., CPUID_EXT_VMX, some PV
+  features.
+
+- The supported XCR0 and XSS bits needs to be cap'ed by tdx_caps, because
+  KVM uses them to setup XFAM of TD.
+
+Introduce tdx_get_supported_cpuid() to adjust the
+kvm_arch_get_supported_cpuid() for TDX VM.
+
+Note, the main work is to adjust supported CPUID leafs of 0XD to avoid
+QEMU from passing unsupported to KVM. Adjustment of other leafs is not
+fatal for creating a TD guest, and we leave it as future work.
+
+Signed-off-by: Xiaoyao Li <xiaoyao.li@intel.com>
+---
+ target/i386/cpu.c     |  3 ---
+ target/i386/cpu.h     |  3 +++
+ target/i386/kvm/kvm.c |  4 ++++
+ target/i386/kvm/tdx.c | 48 +++++++++++++++++++++++++++++++++++++++++++
+ target/i386/kvm/tdx.h |  2 ++
+ 5 files changed, 57 insertions(+), 3 deletions(-)
+
+diff --git a/target/i386/cpu.c b/target/i386/cpu.c
+index 6a57ef13af..6f28394822 100644
+--- a/target/i386/cpu.c
++++ b/target/i386/cpu.c
+@@ -1418,9 +1418,6 @@ static const X86RegisterInfo32 x86_reg_info_32[CPU_NB_REGS32] = {
+ };
+ #undef REGISTER
+ 
+-/* CPUID feature bits available in XSS */
+-#define CPUID_XSTATE_XSS_MASK    (XSTATE_ARCH_LBR_MASK)
+-
+ ExtSaveArea x86_ext_save_areas[XSAVE_STATE_AREA_COUNT] = {
+     [XSTATE_FP_BIT] = {
+         /* x87 FP state component is always enabled if XSAVE is supported */
+diff --git a/target/i386/cpu.h b/target/i386/cpu.h
+index 82004b65b9..39f831c4b3 100644
+--- a/target/i386/cpu.h
++++ b/target/i386/cpu.h
+@@ -583,6 +583,9 @@ typedef enum X86Seg {
+                                  XSTATE_Hi16_ZMM_MASK | XSTATE_PKRU_MASK | \
+                                  XSTATE_XTILE_CFG_MASK | XSTATE_XTILE_DATA_MASK)
+ 
++/* CPUID feature bits available in XSS */
++#define CPUID_XSTATE_XSS_MASK    (XSTATE_ARCH_LBR_MASK)
++
+ /* CPUID feature words */
+ typedef enum FeatureWord {
+     FEAT_1_EDX,         /* CPUID[1].EDX */
+diff --git a/target/i386/kvm/kvm.c b/target/i386/kvm/kvm.c
+index 9e30fa9f4e..9930902ae8 100644
+--- a/target/i386/kvm/kvm.c
++++ b/target/i386/kvm/kvm.c
+@@ -492,6 +492,10 @@ uint32_t kvm_arch_get_supported_cpuid(KVMState *s, uint32_t function,
+         ret |= 1U << KVM_HINTS_REALTIME;
+     }
+ 
++    if (is_tdx_vm()) {
++        tdx_get_supported_cpuid(function, index, reg, &ret);
++    }
++
+     return ret;
+ }
+ 
+diff --git a/target/i386/kvm/tdx.c b/target/i386/kvm/tdx.c
+index bcac37a533..f1f46af021 100644
+--- a/target/i386/kvm/tdx.c
++++ b/target/i386/kvm/tdx.c
+@@ -14,12 +14,21 @@
+ #include "qemu/osdep.h"
+ #include "qapi/error.h"
+ #include "qom/object_interfaces.h"
++#include "standard-headers/asm-x86/kvm_para.h"
+ #include "sysemu/kvm.h"
+ 
+ #include "hw/i386/x86.h"
+ #include "kvm_i386.h"
+ #include "tdx.h"
+ 
++#define TDX_SUPPORTED_KVM_FEATURES  ((1ULL << KVM_FEATURE_NOP_IO_DELAY) | \
++                                     (1ULL << KVM_FEATURE_PV_UNHALT) | \
++                                     (1ULL << KVM_FEATURE_PV_TLB_FLUSH) | \
++                                     (1ULL << KVM_FEATURE_PV_SEND_IPI) | \
++                                     (1ULL << KVM_FEATURE_POLL_CONTROL) | \
++                                     (1ULL << KVM_FEATURE_PV_SCHED_YIELD) | \
++                                     (1ULL << KVM_FEATURE_MSI_EXT_DEST_ID))
++
+ static TdxGuest *tdx_guest;
+ 
+ /* It's valid after kvm_confidential_guest_init()->kvm_tdx_init() */
+@@ -128,6 +137,45 @@ int tdx_kvm_init(MachineState *ms, Error **errp)
+     return 0;
+ }
+ 
++void tdx_get_supported_cpuid(uint32_t function, uint32_t index, int reg,
++                             uint32_t *ret)
++{
++    switch (function) {
++    case 1:
++        if (reg == R_ECX) {
++            *ret &= ~CPUID_EXT_VMX;
++        }
++        break;
++    case 0xd:
++        if (index == 0) {
++            if (reg == R_EAX) {
++                *ret &= (uint32_t)tdx_caps->xfam_fixed0 & CPUID_XSTATE_XCR0_MASK;
++                *ret |= (uint32_t)tdx_caps->xfam_fixed1 & CPUID_XSTATE_XCR0_MASK;
++            } else if (reg == R_EDX) {
++                *ret &= (tdx_caps->xfam_fixed0 & CPUID_XSTATE_XCR0_MASK) >> 32;
++                *ret |= (tdx_caps->xfam_fixed1 & CPUID_XSTATE_XCR0_MASK) >> 32;
++            }
++        } else if (index == 1) {
++            if (reg == R_ECX) {
++                *ret &= (uint32_t)tdx_caps->xfam_fixed0 & CPUID_XSTATE_XSS_MASK;
++                *ret |= (uint32_t)tdx_caps->xfam_fixed1 & CPUID_XSTATE_XSS_MASK;
++            } else if (reg == R_EDX) {
++                *ret &= (tdx_caps->xfam_fixed0 & CPUID_XSTATE_XSS_MASK) >> 32;
++                *ret |= (tdx_caps->xfam_fixed1 & CPUID_XSTATE_XSS_MASK) >> 32;
++            }
++        }
++        break;
++    case KVM_CPUID_FEATURES:
++        if (reg == R_EAX) {
++            *ret &= TDX_SUPPORTED_KVM_FEATURES;
++        }
++        break;
++    default:
++        /* TODO: Use tdx_caps to adjust CPUID leafs. */
++        break;
++    }
++}
++
+ /* tdx guest */
+ OBJECT_DEFINE_TYPE_WITH_INTERFACES(TdxGuest,
+                                    tdx_guest,
+diff --git a/target/i386/kvm/tdx.h b/target/i386/kvm/tdx.h
+index 4036ca2f3f..06599b65b8 100644
+--- a/target/i386/kvm/tdx.h
++++ b/target/i386/kvm/tdx.h
+@@ -27,5 +27,7 @@ bool is_tdx_vm(void);
+ #endif /* CONFIG_TDX */
+ 
+ int tdx_kvm_init(MachineState *ms, Error **errp);
++void tdx_get_supported_cpuid(uint32_t function, uint32_t index, int reg,
++                             uint32_t *ret);
+ 
+ #endif /* QEMU_I386_TDX_H */
+-- 
+2.31.1
+

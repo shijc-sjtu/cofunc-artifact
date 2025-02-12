@@ -1,0 +1,34 @@
+From 34ad7b8e395c871f96611e9f9ba728b799e0383a Mon Sep 17 00:00:00 2001
+From: Xiaocheng Dong <xiaocheng.dong@intel.com>
+Date: Wed, 7 Dec 2022 20:36:40 -0500
+Subject: [PATCH 99/99] target/i386: Fix wrong XSAVE feature names
+
+The previous patch changes the name from FEAT_XSAVE_COMP_{LO|HI}
+to FEAT_XSAVE_XCR0_{LO|HI}, the changes for CPUID.0x12.0x1 should be
+FEAT_XSAVE_XCR0_{LO|HI}, the SGX can't work in VM if these are not right
+
+Fixes: 301e90675c3f ("target/i386: Enable support for XSAVES based features")
+
+Signed-off-by: Xiaocheng Dong <xiaocheng.dong@intel.com>
+---
+ target/i386/cpu.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/target/i386/cpu.c b/target/i386/cpu.c
+index 73ff67639a..aa13b78288 100644
+--- a/target/i386/cpu.c
++++ b/target/i386/cpu.c
+@@ -5590,8 +5590,8 @@ void cpu_x86_cpuid(CPUX86State *env, uint32_t index, uint32_t count,
+         } else {
+             *eax &= env->features[FEAT_SGX_12_1_EAX];
+             *ebx &= 0; /* ebx reserve */
+-            *ecx &= env->features[FEAT_XSAVE_XSS_LO];
+-            *edx &= env->features[FEAT_XSAVE_XSS_HI];
++            *ecx &= env->features[FEAT_XSAVE_XCR0_LO];
++            *edx &= env->features[FEAT_XSAVE_XCR0_HI];
+ 
+             /* FP and SSE are always allowed regardless of XSAVE/XCR0. */
+             *ecx |= XSTATE_FP_MASK | XSTATE_SSE_MASK;
+-- 
+2.31.1
+

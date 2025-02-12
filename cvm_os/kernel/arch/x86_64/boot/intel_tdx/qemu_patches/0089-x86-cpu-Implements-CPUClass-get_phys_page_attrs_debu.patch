@@ -1,0 +1,211 @@
+From 8e74cc9f68117bc5a15e1a12fe91ecca9a5e578c Mon Sep 17 00:00:00 2001
+From: Yuan Yao <yuan.yao@intel.com>
+Date: Thu, 1 Jul 2021 09:07:06 +0800
+Subject: [PATCH 89/99] x86/cpu: Implements CPUClass::get_phys_page_attrs_debug
+ for x86 encrypted guests
+
+Also Introduce kvm_encrypted_guest_mask_gpa_stolen_bit(), the
+stolen bit doesn't belong to GPA space but just a bit to indicate
+the page encryption type (shared or private). It must be cleared
+from GPA while QEMU is walking guest's page table to get correct
+mapped GPA address for one virtual address.
+
+kvm_encrypted_guest_mask_gpa_stolen_bit() now works for INTEL TDX
+guest and easy to extend for AMD SEV guest yet.
+
+Signed-off-by: Yuan Yao <yuan.yao@intel.com>
+---
+ include/sysemu/kvm.h  |  1 +
+ target/i386/helper.c  | 41 ++++++++++++++++++++++++++++++-----------
+ target/i386/kvm/kvm.c |  7 +++++++
+ target/i386/kvm/tdx.c | 20 ++++++++++++++++++++
+ target/i386/kvm/tdx.h |  1 +
+ 5 files changed, 59 insertions(+), 11 deletions(-)
+
+diff --git a/include/sysemu/kvm.h b/include/sysemu/kvm.h
+index 702555c492..12798c1145 100644
+--- a/include/sysemu/kvm.h
++++ b/include/sysemu/kvm.h
+@@ -592,4 +592,5 @@ void kvm_set_memory_region_debug_ops(void *handle, MemoryRegion *mr);
+ 
+ void kvm_encrypted_guest_set_memory_region_debug_ops(void *handle,
+                                                      MemoryRegion *mr);
++hwaddr kvm_encrypted_guest_mask_gpa_stolen_bit(hwaddr gpa);
+ #endif
+diff --git a/target/i386/helper.c b/target/i386/helper.c
+index 2b1eb4723f..625e4ef6b6 100644
+--- a/target/i386/helper.c
++++ b/target/i386/helper.c
+@@ -24,6 +24,9 @@
+ #include "sysemu/runstate.h"
+ #include "kvm/kvm_i386.h"
+ #ifndef CONFIG_USER_ONLY
++#include "hw/boards.h"
++#include "kvm/tdx.h"
++#include "sysemu/tdx.h"
+ #include "sysemu/hw_accel.h"
+ #include "monitor/monitor.h"
+ #endif
+@@ -212,8 +215,10 @@ void cpu_x86_update_cr4(CPUX86State *env, uint32_t new_cr4)
+ }
+ 
+ #if !defined(CONFIG_USER_ONLY)
+-hwaddr x86_cpu_get_phys_page_attrs_debug(CPUState *cs, vaddr addr,
+-                                         MemTxAttrs *attrs)
++static hwaddr x86_cpu_get_phys_page_attrs_debug_internal(CPUState *cs, vaddr addr,
++                                                         MemTxAttrs *attrs,
++                                                         uint64_t (*ldq_phys)(CPUState *, hwaddr),
++                                                         uint32_t (*ldl_phys)(CPUState *, hwaddr))
+ {
+     X86CPU *cpu = X86_CPU(cs);
+     CPUX86State *env = &cpu->env;
+@@ -249,7 +254,7 @@ hwaddr x86_cpu_get_phys_page_attrs_debug(CPUState *cs, vaddr addr,
+             if (la57) {
+                 pml5e_addr = ((env->cr[3] & ~0xfff) +
+                         (((addr >> 48) & 0x1ff) << 3)) & a20_mask;
+-                pml5e = x86_ldq_phys(cs, pml5e_addr);
++                pml5e = ldq_phys(cs, pml5e_addr);
+                 if (!(pml5e & PG_PRESENT_MASK)) {
+                     return -1;
+                 }
+@@ -259,13 +264,13 @@ hwaddr x86_cpu_get_phys_page_attrs_debug(CPUState *cs, vaddr addr,
+ 
+             pml4e_addr = ((pml5e & PG_ADDRESS_MASK) +
+                     (((addr >> 39) & 0x1ff) << 3)) & a20_mask;
+-            pml4e = x86_ldq_phys(cs, pml4e_addr);
++            pml4e = ldq_phys(cs, pml4e_addr);
+             if (!(pml4e & PG_PRESENT_MASK)) {
+                 return -1;
+             }
+             pdpe_addr = ((pml4e & PG_ADDRESS_MASK) +
+                          (((addr >> 30) & 0x1ff) << 3)) & a20_mask;
+-            pdpe = x86_ldq_phys(cs, pdpe_addr);
++            pdpe = ldq_phys(cs, pdpe_addr);
+             if (!(pdpe & PG_PRESENT_MASK)) {
+                 return -1;
+             }
+@@ -280,14 +285,14 @@ hwaddr x86_cpu_get_phys_page_attrs_debug(CPUState *cs, vaddr addr,
+         {
+             pdpe_addr = ((env->cr[3] & ~0x1f) + ((addr >> 27) & 0x18)) &
+                 a20_mask;
+-            pdpe = x86_ldq_phys(cs, pdpe_addr);
++            pdpe = ldq_phys(cs, pdpe_addr);
+             if (!(pdpe & PG_PRESENT_MASK))
+                 return -1;
+         }
+ 
+         pde_addr = ((pdpe & PG_ADDRESS_MASK) +
+                     (((addr >> 21) & 0x1ff) << 3)) & a20_mask;
+-        pde = x86_ldq_phys(cs, pde_addr);
++        pde = ldq_phys(cs, pde_addr);
+         if (!(pde & PG_PRESENT_MASK)) {
+             return -1;
+         }
+@@ -300,7 +305,7 @@ hwaddr x86_cpu_get_phys_page_attrs_debug(CPUState *cs, vaddr addr,
+             pte_addr = ((pde & PG_ADDRESS_MASK) +
+                         (((addr >> 12) & 0x1ff) << 3)) & a20_mask;
+             page_size = 4096;
+-            pte = x86_ldq_phys(cs, pte_addr);
++            pte = ldq_phys(cs, pte_addr);
+         }
+         if (!(pte & PG_PRESENT_MASK)) {
+             return -1;
+@@ -310,7 +315,7 @@ hwaddr x86_cpu_get_phys_page_attrs_debug(CPUState *cs, vaddr addr,
+ 
+         /* page directory entry */
+         pde_addr = ((env->cr[3] & ~0xfff) + ((addr >> 20) & 0xffc)) & a20_mask;
+-        pde = x86_ldl_phys(cs, pde_addr);
++        pde = ldl_phys(cs, pde_addr);
+         if (!(pde & PG_PRESENT_MASK))
+             return -1;
+         if ((pde & PG_PSE_MASK) && (env->cr[4] & CR4_PSE_MASK)) {
+@@ -319,7 +324,7 @@ hwaddr x86_cpu_get_phys_page_attrs_debug(CPUState *cs, vaddr addr,
+         } else {
+             /* page directory entry */
+             pte_addr = ((pde & ~0xfff) + ((addr >> 10) & 0xffc)) & a20_mask;
+-            pte = x86_ldl_phys(cs, pte_addr);
++            pte = ldl_phys(cs, pte_addr);
+             if (!(pte & PG_PRESENT_MASK)) {
+                 return -1;
+             }
+@@ -333,9 +338,23 @@ out:
+ #endif
+     pte &= PG_ADDRESS_MASK & ~(page_size - 1);
+     page_offset = (addr & TARGET_PAGE_MASK) & (page_size - 1);
+-    return pte | page_offset;
++    return kvm_encrypted_guest_mask_gpa_stolen_bit(pte | page_offset);
+ }
+ 
++#if !defined(CONFIG_USER_ONLY)
++hwaddr x86_cpu_get_phys_page_attrs_debug(CPUState *cs, vaddr addr,
++                                         MemTxAttrs *attrs)
++{
++    if (tdx_debug_enabled())
++        return x86_cpu_get_phys_page_attrs_debug_internal(cs, addr, attrs,
++                                                          x86_ldq_phys_debug,
++                                                          x86_ldl_phys_debug);
++    return x86_cpu_get_phys_page_attrs_debug_internal(cs, addr, attrs,
++                                                      x86_ldq_phys,
++                                                      x86_ldl_phys);
++}
++#endif
++
+ typedef struct MCEInjectionParams {
+     Monitor *mon;
+     int bank;
+diff --git a/target/i386/kvm/kvm.c b/target/i386/kvm/kvm.c
+index 787f252b99..190073ad4b 100644
+--- a/target/i386/kvm/kvm.c
++++ b/target/i386/kvm/kvm.c
+@@ -5723,3 +5723,10 @@ void kvm_encrypted_guest_set_memory_region_debug_ops(void *handle,
+ {
+     memory_region_set_ram_debug_ops(mr, &kvm_encrypted_guest_mr_debug_ops);
+ }
++
++hwaddr kvm_encrypted_guest_mask_gpa_stolen_bit(hwaddr gpa)
++{
++    if (is_tdx_vm())
++        return tdx_remove_stolen_bit(gpa);
++    return gpa;
++}
+diff --git a/target/i386/kvm/tdx.c b/target/i386/kvm/tdx.c
+index eb8a4a2a6c..de1017059f 100644
+--- a/target/i386/kvm/tdx.c
++++ b/target/i386/kvm/tdx.c
+@@ -1138,3 +1138,23 @@ bool tdx_debug_enabled(void)
+ 
+     return tdx_guest->attributes & TDX_TD_ATTRIBUTES_DEBUG;
+ }
++
++static hwaddr tdx_gpa_stolen_mask(void)
++{
++    X86CPU *x86_cpu = X86_CPU(first_cpu);
++
++    if (!x86_cpu || !x86_cpu->phys_bits)
++        return 0ULL;
++
++    if (x86_cpu->phys_bits > 48)
++            return 1ULL << 51;
++        else
++            return 1ULL << 47;
++}
++
++hwaddr tdx_remove_stolen_bit(hwaddr gpa)
++{
++    if (!is_tdx_vm())
++        return gpa;
++    return gpa & ~tdx_gpa_stolen_mask();
++}
+diff --git a/target/i386/kvm/tdx.h b/target/i386/kvm/tdx.h
+index 34037e1508..a50969d892 100644
+--- a/target/i386/kvm/tdx.h
++++ b/target/i386/kvm/tdx.h
+@@ -67,4 +67,5 @@ int tdx_pre_create_vcpu(CPUState *cpu);
+ int tdx_parse_tdvf(void *flash_ptr, int size);
+ void tdx_handle_exit(X86CPU *cpu, struct kvm_tdx_exit *tdx_exit);
+ 
++hwaddr tdx_remove_stolen_bit(hwaddr gpa);
+ #endif /* QEMU_I386_TDX_H */
+-- 
+2.31.1
+

@@ -1,0 +1,73 @@
+From 3781bb235040cee0286b9bc4bc364ac9a68401bc Mon Sep 17 00:00:00 2001
+From: Chao Peng <chao.p.peng@linux.intel.com>
+Date: Wed, 24 Nov 2021 15:46:54 +0800
+Subject: [PATCH 60/99] RAMBlock: Support private memory
+
+Add private memory support to RAMBlock so we can have both shared memory
+and private memory in one RAMBlock. The shared part is represented by
+fd+host and the private part is represented by
+private_fd+private_offset.
+
+Signed-off-by: Chao Peng <chao.p.peng@linux.intel.com>
+---
+ include/exec/memory.h   | 11 +++++++++++
+ include/exec/ramblock.h |  1 +
+ softmmu/memory.c        |  8 ++++++++
+ 3 files changed, 20 insertions(+)
+
+diff --git a/include/exec/memory.h b/include/exec/memory.h
+index a6a0f4d8ad..b5a48a7d42 100644
+--- a/include/exec/memory.h
++++ b/include/exec/memory.h
+@@ -1326,6 +1326,17 @@ void memory_region_init_ram_from_fd(MemoryRegion *mr,
+                                     int fd,
+                                     ram_addr_t offset,
+                                     Error **errp);
++
++/**
++ * memory_region_set_private_fd:  Set RAM memory region with a private fd.
++ *
++ * @mr: the #MemoryRegion to be set.
++ * @fd: the fd to provide private memory.
++ *
++ */
++
++void memory_region_set_private_fd(MemoryRegion *mr, int fd);
++
+ #endif
+ 
+ /**
+diff --git a/include/exec/ramblock.h b/include/exec/ramblock.h
+index 6cbedf9e0c..2742b3a5ef 100644
+--- a/include/exec/ramblock.h
++++ b/include/exec/ramblock.h
+@@ -40,6 +40,7 @@ struct RAMBlock {
+     QLIST_ENTRY(RAMBlock) next;
+     QLIST_HEAD(, RAMBlockNotifier) ramblock_notifiers;
+     int fd;
++    int private_fd;
+     size_t page_size;
+     /* dirty bitmap used during migration */
+     unsigned long *bmap;
+diff --git a/softmmu/memory.c b/softmmu/memory.c
+index 7ba2048836..79692ecd09 100644
+--- a/softmmu/memory.c
++++ b/softmmu/memory.c
+@@ -1641,6 +1641,14 @@ void memory_region_init_ram_from_fd(MemoryRegion *mr,
+         error_propagate(errp, err);
+     }
+ }
++
++void memory_region_set_private_fd(MemoryRegion *mr, int fd)
++{
++    if (mr->ram_block) {
++        mr->ram_block->private_fd = fd;
++    }
++}
++
+ #endif
+ 
+ void memory_region_init_ram_ptr(MemoryRegion *mr,
+-- 
+2.31.1
+
