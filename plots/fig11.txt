@@ -1,0 +1,34 @@
+K: Kata-CVM (s), N: Native (s), C: CoFunc (s), OP: Optimization, OV: Overhead
+OP = K / C, OV = (C / N - 1) * 100
+-----------------------------------------------------------------------------
+Function                	K   	N   	C   	OP   	OV   
+fn_py_bfs               	0.903	0.431	0.450	2.005	4.448
+fn_py_chameleon         	0.564	0.066	0.087	6.509	31.518
+fn_py_compression       	1.210	0.623	0.685	1.768	9.855
+fn_py_duplicator        	1.013	0.217	0.274	3.690	26.424
+fn_py_face_detection    	1.899	0.598	0.617	3.076	3.231
+fn_py_float             	0.464	0.035	0.051	9.136	45.666
+fn_py_gzip              	6.411	5.831	1.435	4.468	-75.391
+fn_py_image_processing  	5.412	4.506	4.537	1.193	0.684
+fn_py_json              	0.702	0.273	0.300	2.342	9.665
+fn_py_linpack           	0.629	0.052	0.074	8.522	41.915
+fn_py_matmul            	0.667	0.089	0.107	6.257	19.259
+fn_py_mst               	0.930	0.474	0.477	1.952	0.563
+fn_py_pagerank          	1.225	0.729	0.757	1.618	3.845
+fn_py_pyaes             	0.486	0.060	0.078	6.245	29.890
+fn_py_sentiment         	0.686	0.010	0.014	48.201	41.418
+fn_py_thumbnailer       	0.841	0.137	0.165	5.087	21.061
+fn_py_uploader          	0.757	0.111	0.148	5.116	33.632
+fn_py_video_processing  	30.233	28.536	28.930	1.045	1.380
+fn_py_dna_visualisation 	10.181	9.104	9.395	1.084	3.197
+fn_js_auth              	0.723	0.029	0.032	22.354	11.698
+fn_js_dynamic_html      	0.726	0.050	0.058	12.417	16.117
+fn_js_encrypt           	1.050	0.185	0.342	3.068	85.247
+fn_js_thumbnailer       	1.121	0.169	0.193	5.822	14.086
+fn_js_uploader          	1.016	0.159	0.221	4.599	38.974
+chain_js_alexa          	2.822	0.106	0.156	18.113	46.891
+chain_py_map_reduce     	1.841	0.295	0.388	4.742	31.379
+chain_js_data_analysis  	4.862	1.008	1.120	4.341	11.164
+Min                     	    	    	    	1.045	-75.391
+Max                     	    	    	    	48.201	85.247
+Avg                     	    	    	    	7.214	18.808
