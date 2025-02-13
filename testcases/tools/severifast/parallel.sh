@@ -15,6 +15,7 @@ fi
 for _ in $(seq $times); do
     echo "" > $exec_log
 
+    sudo pkill -9 wait.py || true
     $tools/severifast/wait.py $concurrency | tee -a $exec_log &
     sleep 1
 

@@ -14,6 +14,7 @@ app = Flask(__name__)
 def done():
     global n
     n -= 1
+    print(n, flush=True)
     if n == 0:
         print(f"t_end {time.time()}", flush=True)
         os._exit(0)

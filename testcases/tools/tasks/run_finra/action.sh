@@ -1,9 +1,7 @@
-#!/bin/bash
-
-set -e
+#!/bin/bash -e
 
 tools=$(dirname $(realpath $0))/../..
-finra=$tools/../chain_py_finra
+finra=$tools/../testcases/chain_py_finra
 fs=fn_py_finra_fetch_slow
 ff=fn_py_finra_fetch_fast
 as=fn_py_finra_audit_slow
@@ -128,10 +126,10 @@ run_kata_launch_fetch_slow() {
 
 run_kata_launch_audit_slow() {
     pushd $as
-    $tools/severifast/config.sh $2
+    $tools/severifast/config_multiple.sh $2
     $tools/severifast/rootfs.sh
     sudo $tools/severifast/parallel.sh $2 results/sev/new/log_kata_launch_$2 $1
-    $tools/severifast/config.sh clean
+    $tools/severifast/config_multiple.sh clean
     $tools/severifast/rootfs.sh clean
     popd
 }

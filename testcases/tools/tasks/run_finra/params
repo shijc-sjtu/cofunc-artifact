@@ -1,13 +1,4 @@
 sc_fork_audit_fast_prepare 25
-sc_fork_audit_fast 5 10 25
-sc_fork_audit_fast 5 20 25
-sc_fork_audit_fast 5 50 25
-sc_fork_audit_fast 5 100 25
 sc_fork_audit_fast 5 200 25
 sc_fork_audit_fast_done 25
-sc_fork_audit_slow_prepare 25
-sc_fork_audit_slow 5 10 25
-sc_fork_audit_slow 5 20 25
-sc_fork_audit_slow 5 50 25
-sc_fork_audit_slow 5 100 25
-sc_fork_audit_slow 5 200 25
+kata_launch_audit_slow 5 200

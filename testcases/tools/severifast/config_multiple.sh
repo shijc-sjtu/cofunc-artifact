@@ -6,8 +6,7 @@ tools=$(dirname $0)/..
 tools=$(realpath $tools)
 assets=$tools/../severifast-assets
 mem_size=$(cat memory)
-id=${1:-1}
-ip=${CNTR_IP:-192.168.12.250/24}
+n=${1:-1}
 
 mem_size=$(bc <<< "${mem_size}+128")
 if [[ $mem_size -gt 1024 ]]; then
@@ -82,8 +81,6 @@ if [[ $1 == "clean" ]]; then
     exit 0
 fi
 
-# for i in $(seq $n); do
-#     build $i
-# done
-
-build $id $ip
+for i in $(seq $n); do
+    build $i 172.16.1.$i/16
+done

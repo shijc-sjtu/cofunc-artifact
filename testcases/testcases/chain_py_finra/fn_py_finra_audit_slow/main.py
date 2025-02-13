@@ -96,7 +96,7 @@ def set_retval(fn_name, retval):
     assert data == b'OK'
 
 
-fn_name='chain_py_finra/fn_py_finra_audit_slow'
+fn_name='testcases/chain_py_finra/fn_py_finra_audit_slow'
 param = get_param(fn_name)
 yfinance = fetch_data()
 retval = do_audit(yfinance)
