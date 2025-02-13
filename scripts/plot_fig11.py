@@ -36,19 +36,20 @@ apps = {
     "chain_py_map_reduce": (
         ["chain_py_map_reduce/fn_py_mapper",
          "chain_py_map_reduce/fn_py_reducer"], True),
-    "chain_js_data_analysis": ([
-        "chain_js_data_analysis/fn_js_wage_analysis_merit_percent",
-        "chain_js_data_analysis/fn_js_wage_analysis_realpay",
-        "chain_js_data_analysis/fn_js_wage_analysis_result",
-        "chain_js_data_analysis/fn_js_wage_analysis_total",
-        "chain_js_data_analysis/fn_js_wage_fillup"], False),
+    "chain_js_data_analysis": (
+        ["chain_js_data_analysis/fn_js_wage_analysis_merit_percent",
+         "chain_js_data_analysis/fn_js_wage_analysis_realpay",
+         "chain_js_data_analysis/fn_js_wage_analysis_result",
+         "chain_js_data_analysis/fn_js_wage_analysis_total",
+         "chain_js_data_analysis/fn_js_wage_fillup"], False),
 }
 
 native_cow_latency = 1e-9 * \
-    float(open('testcases/testcases/microbenchmarks/cow/exec_log').readlines()[-1].strip())
+    float(open('log/microbenchmarks/cow/result').readlines()[-1].strip())
 
 def collect_log_file(filename):
     if not os.path.exists(filename):
+        print(filename)
         return None
     results = []
     with open(filename) as file:
@@ -114,10 +115,17 @@ def gen_table(results):
     lines.append("OP = K / C, OV = (C / N - 1) * 100")
     lines.append("-----------------------------------------------------------------------------")
     lines.append(f"{'Function':<24}\t{'K':<4}\t{'N':<4}\t{'C':<4}\t{'OP':<5}\t{'OV':<5}")
+    optimizations = []
+    overheads = []
     for app_name, (kata, native, cofunc) in results.items():
         optimization = kata / cofunc
+        optimizations.append(optimization)
         overhead = (cofunc - native) / native * 100
+        overheads.append(overhead)
         lines.append(f"{app_name:<24}\t{kata:.3f}\t{native:.3f}\t{cofunc:.3f}\t{optimization:.3f}\t{overhead:.3f}")
+    lines.append(f"{'Min':<24}\t{' ':<4}\t{' ':<4}\t{' ':<4}\t{min(optimizations):.3f}\t{min(overheads):.3f}")
+    lines.append(f"{'Max':<24}\t{' ':<4}\t{' ':<4}\t{' ':<4}\t{max(optimizations):.3f}\t{max(overheads):.3f}")
+    lines.append(f"{'Avg':<24}\t{' ':<4}\t{' ':<4}\t{' ':<4}\t{np.average(optimizations):.3f}\t{np.average(overheads):.3f}")
     return "\n".join(lines)
 
 

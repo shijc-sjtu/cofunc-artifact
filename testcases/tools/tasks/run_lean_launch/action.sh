@@ -6,7 +6,7 @@ times=$2
 tools=$(dirname $(realpath $0))/../..
 
 log_dir=${LOG_DIR:-/tmp/log}/$fn_name
-log_file=$log_dir/log_lean_launch
+log_file=$log_dir/lean_launch.log
 
 pushd $tools/../testcases/$fn_name
 

@@ -24,7 +24,7 @@
 #define CYCLE_PER_NS 1UL
 
 #define HPAGE_SIZE (1UL << (9 + 12))
-#define SHARED_POOL_SIZE (48UL * 1024 * 1024)
+#define SHARED_POOL_SIZE (4UL * 1024 * 1024)
 
 #define debug(fmt, ...) //printk(fmt, ##__VA_ARGS__)
 

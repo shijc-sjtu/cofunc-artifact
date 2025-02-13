@@ -46,7 +46,7 @@ int main(int argc, char *argv[])
         *c = 'B';
     }
     t1 = get_timestamp();
-    printf("%f\n", (double)(t1 - t0) / (MMAP_SIZE / PAGE_SIZE));
+    printf("latency %f\n", (double)(t1 - t0) / (MMAP_SIZE / PAGE_SIZE));
 
     return 0;
 }

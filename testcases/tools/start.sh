@@ -56,6 +56,10 @@ for i in $(seq $times); do
                 -v /dev:/dev --tmpfs /tmp --tmpfs /run \
                 $fn_name /tools/start.sh $command | tee -a $exec_log
 
+        if [[ $NO_ANALYSIS ]]; then
+                continue
+        fi
+
         if [[ $result_log != "" ]]; then
                 $tools/analyze.py --log $result_log
         else

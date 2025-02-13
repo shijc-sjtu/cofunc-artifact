@@ -10,7 +10,10 @@ testcases/tools/run_task.sh run_severifast_launch
 # Run Native baseline
 testcases/tools/run_task.sh run_lean_fork
 testcases/tools/run_task.sh run_lean_launch # Multi-threading fork is not supported for Native
-pushd testcases/testcases/microbenchmarks/cow; ../../../tools/start.sh linux-fork; popd
+pushd testcases/testcases/microbenchmarks/cow; ./eval.py $LOG_DIR/microbenchmarks/cow/result; popd
 
 # Run CoFunc
 testcases/tools/run_task.sh run_sc_fork
+
+# Generate table and figure
+scripts/plot_fig11.py
