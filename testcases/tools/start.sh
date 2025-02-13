@@ -11,16 +11,16 @@ name=$fn_name
 times=${3:-1}
 tools=$(dirname $0)
 slot_id=${SLOT_ID:-0}
-if [[ $PREALLOC ]]; then
-        prealloc="--enable-prealloc"
-fi
+# if [[ $PREALLOC ]]; then
+#         prealloc="--enable-prealloc"
+# fi
 
 cpu_param="--cpuset-cpus 0"
 
 if [[ $runtime == "runc" ]]; then
         command=$command
 elif [[ $runtime == "sc" ]]; then
-        command="/bin/sc-runtime $prealloc --slot $slot_id $command"
+        command="/bin/sc-runtime --slot $slot_id $command"
 elif [[ $runtime == "shell" ]]; then
         command="sh"
 elif [[ $runtime == "sc-snapshot" ]]; then
@@ -41,9 +41,9 @@ fi
 
 docker rm -f $name &>/dev/null || true
 
-if [[ $result_log != "" ]]; then
-        echo "new test @ $(date)" >> $result_log
-fi
+# if [[ $result_log != "" ]]; then
+#         echo "new test @ $(date)" >> $result_log
+# fi
 
 for i in $(seq $times); do
         t_begin=$(date +%s.%7N)

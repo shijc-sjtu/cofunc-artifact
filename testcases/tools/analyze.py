@@ -123,8 +123,8 @@ def handle_kata_launch():
 def handle_runc_sc():
     result["t_boot"] = data["t_import_done"] - data["t_begin"]
     result["t_exec"] = data["t_func_done"] - data["t_import_done"]
-    # for key in ["t_encrypt_exec", "t_attest_import", "t_grant_import", "t_delegate_import"]:
-    #     result[key] = data[key] / 10 ** 9
+    for key in ["t_encrypt_exec", "t_attest_import", "t_grant_import", "t_delegate_import"]:
+        result[key] = data[key] / 10 ** 9
 
 
 def handle_runc_linux_fork():

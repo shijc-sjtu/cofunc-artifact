@@ -54,6 +54,7 @@ static int kvm_vm_fd;
 static int kvm_vcpu_mmap_size;
 static unsigned slot;
 static unsigned long mem_size = 2048UL * 1024 * 1024; // fake
+static int small_shared_pool = 0;
 static unsigned long gpa;
 static void *anon;
 #if defined(CONFIG_PLAT_AMD_SEV)
@@ -1178,7 +1179,7 @@ static void handle_request(struct kvm_run *run)
                 fflush(stdout);
                 break;
         case SC_REQ_GET_MEM_SIZE:
-                set_vmcall_ret(run, mem_size);
+                set_vmcall_ret(run, mem_size | small_shared_pool);
                 break;
         case SC_REQ_GRANT_MEM:
                 slot = get_vmcall_arg2(run);
@@ -1319,6 +1320,15 @@ static void parse_mem_params(void)
 
         argc -= 3;
         argv += 3;
+
+        if (!argc || strcmp(argv[0], "--small-shared-pool")) {
+                return;
+        }
+
+        small_shared_pool = 1;
+
+        argc -= 1;
+        argv += 1;
 }
 
 static void parse_config_params(void)
@@ -1328,7 +1338,7 @@ static void parse_config_params(void)
         }
 
         if (!strcmp(argv[0], "--disable-sync")) {
-                enable_sync = 0;
+                enable_sync = 1;
         } else {
                 return;
         }

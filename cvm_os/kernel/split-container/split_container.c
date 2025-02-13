@@ -24,7 +24,8 @@
 #define CYCLE_PER_NS 1UL
 
 #define HPAGE_SIZE (1UL << (9 + 12))
-#define SHARED_POOL_SIZE (4UL * 1024 * 1024)
+#define SHARED_POOL_SIZE (48UL * 1024 * 1024)
+#define SMALL_SHARED_POOL_SIZE (4UL * 1024 * 1024)
 
 #define debug(fmt, ...) //printk(fmt, ##__VA_ARGS__)
 
@@ -33,6 +34,7 @@ struct mem_meta {
 #ifdef FAST_SHARED_POOL
         u64 next_shared;
 #endif /* FAST_SHARED_POOL */
+        unsigned long shared_pool_size;
         struct phys_mem_pool *shared_mem_pool;
         struct phys_mem_pool *private_mem_pool;
 };
@@ -197,9 +199,16 @@ static long init_mem(void)
 {
         u64 mem_size, gpa, slot;
         unsigned long t, t0, t1;
+        unsigned long shared_pool_size;
 
         t0 = get_cycles();
         mem_size = split_container_request(SC_REQ_GET_MEM_SIZE, 0, 0);
+        if (mem_size & 1UL) {
+                shared_pool_size = SMALL_SHARED_POOL_SIZE;
+                mem_size &= ~1UL;
+        } else {
+                shared_pool_size = SHARED_POOL_SIZE;
+        }
         debug("[SC-G] init_mem: mem_size=0x%x\n", mem_size);
         mem_size -= HPAGE_SIZE;
         t1 = get_cycles();
@@ -214,14 +223,16 @@ static long init_mem(void)
         sc_cpu->mm.mem_size = mem_size;
         sc_cpu->mm.gpa = gpa;
         sc_cpu->mm.slot = slot;
-        BUG_ON(mem_size < SHARED_POOL_SIZE);
+        BUG_ON(mem_size < shared_pool_size);
 #ifdef FAST_SHARED_POOL
         sc_cpu->mm.next_shared = 0;
-        change_phys_state(gpa, gpa + SHARED_POOL_SIZE, 0);
+        change_phys_state(gpa, gpa + shared_pool_size, 0);
 #else /* FAST_SHARED_POOL */
-        t += init_mem_pool(gpa, SHARED_POOL_SIZE, 0);
+        t += init_mem_pool(gpa, shared_pool_size, 0);
 #endif /* FAST_SHARED_POOL */
-        t += init_mem_pool(gpa + SHARED_POOL_SIZE, mem_size - SHARED_POOL_SIZE, 1);
+        t += init_mem_pool(gpa + shared_pool_size, mem_size - shared_pool_size, 1);
+
+        sc_cpu->mm.shared_pool_size = shared_pool_size;
 
         debug("[SC-G] init_mem: init_buddy done\n");
 
@@ -320,12 +331,12 @@ int split_container_free_pages(void *addr)
         }
 
 #ifdef FAST_SHARED_POOL
-        if (gpa < sc_cpu->mm.gpa + SHARED_POOL_SIZE) {
+        if (gpa < sc_cpu->mm.gpa + sc_cpu->mm.shared_pool_size) {
                 return 0;
         }
 #endif /* FAST_SHARED_POOL */
 
-        mem_pool = gpa < sc_cpu->mm.gpa + SHARED_POOL_SIZE ?
+        mem_pool = gpa < sc_cpu->mm.gpa + sc_cpu->mm.shared_pool_size ?
                 sc_cpu->mm.shared_mem_pool : sc_cpu->mm.private_mem_pool;
 
         page = __virt_to_page(mem_pool, addr);

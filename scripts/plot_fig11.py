@@ -66,10 +66,12 @@ def collect_fn(fn_name, native_fork):
     kata_log_filename = f"{log_dir}/kata_launch.log"
     native_log_filename = f"{log_dir}/lean_{'fork' if native_fork else 'launch'}.log"
     cofunc_log_filename = f"{log_dir}/sc_fork.log"
+    cofunc_launch_log_filename = f"{log_dir}/sc_launch.log"
 
     kata_result = collect_log_file(kata_log_filename)
     native_result = collect_log_file(native_log_filename)
     cofunc_result = collect_log_file(cofunc_log_filename)
+    cofunc_launch_result = collect_log_file(cofunc_launch_log_filename)
 
     cofunc = cofunc_result["t_e2e"]
     
@@ -83,13 +85,13 @@ def collect_fn(fn_name, native_fork):
 
     if kata_result is not None:
         # Emulate measurement and encryption overhead
-        kata = kata_result["t_e2e"] + cofunc_result["t_encrypt_exec"] + cofunc_result["t_attest_import"]
+        kata = kata_result["t_e2e"] + cofunc_launch_result["t_encrypt_exec"] + cofunc_launch_result["t_attest_import"]
     else:
         # SEVeriFast crashes when memory > 1GB, which is required for fn_py_dna_visualisation
         assert fn_name == "fn_py_dna_visualisation"
-        native_result = collect_log_file(f"{log_dir}/lean_launch.log")
+        native_launch_result = collect_log_file(f"{log_dir}/lean_launch.log")
         kata_boot_latency = collect_log_file("log/fn_py_gzip/kata_launch.log")["t_boot_cntr"]
-        kata = kata_boot_latency + native_result["t_e2e"] + cofunc_result["t_encrypt_exec"] + cofunc_result["t_attest_import"]
+        kata = kata_boot_latency + native_launch_result["t_e2e"] + cofunc_launch_result["t_encrypt_exec"] + cofunc_launch_result["t_attest_import"]
 
     return (kata, native, cofunc)
     

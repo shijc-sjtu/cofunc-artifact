@@ -5,6 +5,7 @@ set -e
 fn_name=$(basename $(pwd))
 command=$(cat command)
 mem_size=$(cat memory)
+shared_pool=""; [ -e small_shared_pool ] && shared_pool="--small-shared-pool"
 runtime=$1
 exec_log="exec_log"
 result_log=$2
@@ -31,10 +32,10 @@ elif [[ $runtime == "launch" ]]; then
         command="$command"
         name="${fn_name}_1"
 elif [[ $runtime == "sc-launch" ]]; then
-        command="/bin/sc-runtime -m $mem_file $mem_size --disable-sync $command"
+        command="/bin/sc-runtime -m $mem_file $mem_size $shared_pool $command"
         name="${fn_name}_1"
 elif [[ $runtime == "sc-fork" ]]; then
-        command="/bin/sc-runtime -m $mem_file $mem_size --disable-sync"
+        command="/bin/sc-runtime -m $mem_file $mem_size $shared_pool"
         name="${fn_name}_1"
 elif [[ $runtime == "shell" ]]; then
         command="/bin/sh"

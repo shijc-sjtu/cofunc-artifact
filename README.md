@@ -1,11 +1,14 @@
 # CoFunc Artifact
 
-This is the artifact for the paper "Serverless Functions Made Confidential and Efficient with Split Containers".
+This repository contains the artifact of the paper "Serverless Functions Made Confidential and Efficient with Split Containers".
 
 The artifact includes the following components:
 * The source code of CoFunc system, including the CVM OS code (`cvm_os`), the shadow container code (`shadow_container`) and the patches for the host Linux/QEMU (`patches`).
 * The serverless functions utilized for the experiment (`testcases/testcases`).
 * The scripts for conducting the experiment (`scripts` and `testcases/tools`).
+
+Users of this artifact can evaluate the performance of serverless functions under different container runtimes,
+including split containers (CoFunc), CVM-based Kata Containers (Kata-CVM), and native lean containers (Native).
 
 ## Hardware dependencies
 
@@ -72,4 +75,6 @@ The script will output the function's running time as follows.
 
 ### Experiments
 
-(E1): Evaluate the end-to-end latency of handling a single request for the functions with CVM, Kata-CVM, and Native. Run the script `scripts/run_fig11.sh`. The script will output the execution time of each function and the overhead/optimization of CoFunc compared to Native/Kata-CVM. Additionally, the script will generate a figure at `plots/fig11.pdf`, which can be compared with Figure 11.
+(E1): [1.5 compute-hours] Evaluate the end-to-end latency of handling a single request for the functions with CVM, Kata-CVM, and Native.
+
+Run the script `scripts/run\_fig11.sh`. This scripts executes the functions with different runtimes and outputs the latencies to the `log` directory. The script will generate a table at `plots/fig11.txt` that contains the function latencies and the overhead/optimization of CoFunc compared with Native/Kata-CVM. Additionally, the script will generate a figure at `plots/fig11.pdf`, which can be compared with Figure 11.
