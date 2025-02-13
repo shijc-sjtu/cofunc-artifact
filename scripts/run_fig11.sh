@@ -5,8 +5,8 @@ export HOST_IP=$(jq -r ".host_ip" config.json)
 export LOG_DIR="$(pwd)/log"
 
 # Run CoFunc
-testcases/tools/run_task.sh run_sc_launch # Emulate the measurement/encryption overhead for Kata-CVM
 testcases/tools/run_task.sh run_sc_fork
+testcases/tools/run_task.sh run_sc_launch # Emulate the measurement/encryption overhead for Kata-CVM
 
 # Run Kata-CVM baseline (with SEVeriFast optimization)
 testcases/tools/run_task.sh run_severifast_launch
