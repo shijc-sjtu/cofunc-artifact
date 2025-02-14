@@ -8,9 +8,9 @@ result_log=$2
 times=${3:-1}
 exec_log="exec_log"
 
-if [[ $result_log != "" ]]; then
-        echo "new test @ $(date)" >> $result_log
-fi
+# if [[ $result_log != "" ]]; then
+#         echo "new test @ $(date)" >> $result_log
+# fi
 
 for _ in $(seq $times); do
     echo "" > $exec_log

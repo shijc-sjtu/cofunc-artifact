@@ -49,7 +49,6 @@ native_cow_latency = 1e-9 * \
 
 def collect_log_file(filename):
     if not os.path.exists(filename):
-        print(filename)
         return None
     results = []
     with open(filename) as file:

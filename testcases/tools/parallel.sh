@@ -13,9 +13,9 @@ exec_log="exec_log"
 tools=$(dirname $0)
 slot_num=${SLOT_NUM:-1}
 
-if [[ $result_log != "" ]]; then
-        echo "new test @ $(date)" >> $result_log
-fi
+# if [[ $result_log != "" ]]; then
+#         echo "new test @ $(date)" >> $result_log
+# fi
 
 docker rm -f $name &>/dev/null || true
 

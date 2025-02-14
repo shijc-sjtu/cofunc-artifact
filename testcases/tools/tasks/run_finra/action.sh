@@ -81,7 +81,7 @@ run_sc_fork_audit_fast_done() {
 
 run_sc_fork_audit_fast() {
     pushd $af
-    SLOT_NUM=$3 $tools/parallel.sh sc-restore $2 results/sev/new/log_sc_fork_$2 $1
+    SLOT_NUM=$3 $tools/parallel.sh sc-restore $2 $log_dir/chain_py_finra/$af/sc_fork_$2.log $1
     popd
 }
 
@@ -129,7 +129,7 @@ run_kata_launch_audit_slow() {
     pushd $as
     $tools/severifast/config_multiple.sh $2
     $tools/severifast/rootfs.sh
-    sudo $tools/severifast/parallel.sh $2 results/sev/new/log_kata_launch_$2 $1
+    sudo $tools/severifast/parallel.sh $2 $log_dir/chain_py_finra/$as/kata_launch_$2.log  $1
     $tools/severifast/config_multiple.sh clean
     $tools/severifast/rootfs.sh clean
     popd
