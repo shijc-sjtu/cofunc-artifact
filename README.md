@@ -13,7 +13,7 @@ including split containers (CoFunc), CVM-based Kata Containers (Kata-CVM), and n
 ## Hardware dependencies
 
 The artifact requires AMD CPUs with SEV-SNP support.
-It has been tested on an EPYC-7T83 machines.
+It has been tested on an EPYC-7T83 machine.
 At least 96 CPU cores and 180GB of memory are required.
 A test server is available for AE reviewers.
 Please refer to the HotCRP submission for the SSH command and the private key.
