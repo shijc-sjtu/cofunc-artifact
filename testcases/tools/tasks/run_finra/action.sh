@@ -6,6 +6,7 @@ fs=fn_py_finra_fetch_slow
 ff=fn_py_finra_fetch_fast
 as=fn_py_finra_audit_slow
 af=fn_py_finra_audit_fast
+log_dir=${LOG_DIR:-/tmp/log}
 
 clean_cvm() {
     last=$(bc <<< "$1-1")
@@ -58,7 +59,7 @@ run_sc_fork_fetch_fast() {
     pushd $ff
     prepare_cvm 1
     prepare_sc_snapshot 1
-    sudo $tools/lean_container/start.sh sc-fork results/sev/new/log_sc_fork $1
+    sudo $tools/lean_container/start.sh sc-fork $log_dir/chain_py_finra/$ff/sc_fork.log $1
     clean_sc_snapshot 1
     clean_cvm 1
     popd
@@ -118,7 +119,7 @@ run_kata_launch_fetch_slow() {
     pushd $fs
     $tools/severifast/config.sh
     $tools/severifast/rootfs.sh
-    sudo $tools/severifast/start.sh launch results/sev/new/log_kata_launch $1
+    sudo $tools/severifast/start.sh launch $log_dir/chain_py_finra/$fs/kata_launch.log $1
     $tools/severifast/config.sh clean
     $tools/severifast/rootfs.sh clean
     popd
@@ -155,10 +156,10 @@ pushd $as
 ./prepare.py
 popd
 
-mkdir -p $fs/results/sev/new
-mkdir -p $as/results/sev/new
-mkdir -p $ff/results/sev/new
-mkdir -p $af/results/sev/new
+mkdir -p $log_dir/chain_py_finra/$fs
+mkdir -p $log_dir/chain_py_finra/$as
+mkdir -p $log_dir/chain_py_finra/$ff
+mkdir -p $log_dir/chain_py_finra/$af
 
 run_$1 ${@:2}
 

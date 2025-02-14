@@ -1,3 +1,5 @@
+sc_fork_fetch_fast 5
+kata_launch_fetch_slow 5
 sc_fork_audit_fast_prepare 25
 sc_fork_audit_fast 5 200 25
 sc_fork_audit_fast_done 25
