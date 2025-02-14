@@ -129,11 +129,14 @@ run_kata_launch_fetch_slow() {
 }
 
 run_kata_launch_audit_slow() {
-    sudo rm -f $log_dir/chain_py_finra/$as/kata_launch_$2.log
+    log_file=$log_dir/chain_py_finra/$as/kata_launch_$2.log
+    sudo rm -f $log_file
     pushd $as
     $tools/severifast/config_multiple.sh $2
     $tools/severifast/rootfs.sh
-    sudo $tools/severifast/parallel.sh $2 $log_dir/chain_py_finra/$as/kata_launch_$2.log  $1
+    until [[ -f $log_file ]]; do
+        sudo $tools/severifast/parallel.sh $2 $log_file $1
+    done
     $tools/severifast/config_multiple.sh clean
     $tools/severifast/rootfs.sh clean
     popd

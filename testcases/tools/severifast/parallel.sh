@@ -29,8 +29,8 @@ for _ in $(seq $times); do
     wait
 
     if [[ $result_log != "" ]]; then
-        $tools/analyze.py --log $result_log
+        $tools/analyze.py --log $result_log || true
     else
-        $tools/analyze.py
+        $tools/analyze.py || true
     fi
 done
