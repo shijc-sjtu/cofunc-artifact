@@ -16,9 +16,8 @@ for _ in $(seq $times); do
     echo "" > $exec_log
 
     sudo pkill -9 wait.py || true
-    $tools/severifast/wait.py $concurrency | tee -a $exec_log &
-    sleep 1
-
+    (timeout 1m $tools/severifast/wait.py $concurrency || true) | tee -a $exec_log &
+    sleep 3
 
     echo t_begin $(date +%s.%7N) | tee -a $exec_log
 

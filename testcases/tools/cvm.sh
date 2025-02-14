@@ -22,7 +22,7 @@ fi
 
 pushd $cvm_path
 
-sudo rm exec_log_$slot_id &>/dev/null || true
+sudo rm -f exec_log_$slot_id
 touch exec_log_$slot_id
 
 sudo SLOT_ID=$slot_id screen -dmS $session build/simulate.sh

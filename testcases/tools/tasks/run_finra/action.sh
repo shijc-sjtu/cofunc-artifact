@@ -56,6 +56,7 @@ run_lean_fork_audit_slow() {
 }
 
 run_sc_fork_fetch_fast() {
+    sudo rm -f $log_dir/chain_py_finra/$ff/sc_fork.log
     pushd $ff
     prepare_cvm 1
     prepare_sc_snapshot 1
@@ -80,6 +81,7 @@ run_sc_fork_audit_fast_done() {
 }
 
 run_sc_fork_audit_fast() {
+    sudo rm -f $log_dir/chain_py_finra/$af/sc_fork_$2.log
     pushd $af
     SLOT_NUM=$3 $tools/parallel.sh sc-restore $2 $log_dir/chain_py_finra/$af/sc_fork_$2.log $1
     popd
@@ -116,6 +118,7 @@ run_sc_fork_audit_slow() {
 }
 
 run_kata_launch_fetch_slow() {
+    sudo rm -f $log_dir/chain_py_finra/$fs/kata_launch.log
     pushd $fs
     $tools/severifast/config.sh
     $tools/severifast/rootfs.sh
@@ -126,6 +129,7 @@ run_kata_launch_fetch_slow() {
 }
 
 run_kata_launch_audit_slow() {
+    sudo rm -f $log_dir/chain_py_finra/$as/kata_launch_$2.log
     pushd $as
     $tools/severifast/config_multiple.sh $2
     $tools/severifast/rootfs.sh

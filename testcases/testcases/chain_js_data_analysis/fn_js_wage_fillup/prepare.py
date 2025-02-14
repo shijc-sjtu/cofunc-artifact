@@ -1,4 +1,7 @@
 #!/bin/python
 import subprocess
 
-subprocess.run(["./prepare.sh"])
+while True:
+    out = subprocess.check_output(["./prepare.sh"])
+    if "internal_server_error" not in out.decode("utf-8"):
+        break
