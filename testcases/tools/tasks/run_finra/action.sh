@@ -170,4 +170,18 @@ mkdir -p $log_dir/chain_py_finra/$af
 
 run_$1 ${@:2}
 
+if [[ $1 =~ "fetch_slow" ]]; then
+    pushd $fs
+    $tools/lean_container/rootfs.sh clean
+    $tools/lean_container/cgroup.sh clean
+    popd
+fi
+
+if [[ $1 =~ "fetch_fast" ]]; then
+    pushd $ff
+    $tools/lean_container/rootfs.sh clean
+    $tools/lean_container/cgroup.sh clean
+    popd
+fi
+
 popd
