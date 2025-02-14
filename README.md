@@ -42,17 +42,16 @@ systemd.unified_cgroup_hierarchy=1
 4. Enable transparent huge pages with the following commands.
 
 ```Bash
-echo always | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
 echo always | sudo tee /sys/kernel/mm/transparent_hugepage/shmem_enabled
 ```
 
-4. Create a tap device on the host OS with the following command, with `eth0` replaced with the name of your physical network card.
+4. Create tap devices for Kata Containers with the following command. Experiment (E1) only requires one tap device, while experiment (E2) requires 200 tap devices.
 
 ```Bash
-sudo scripts/init_tap.sh eth0
+sudo scripts/init_tap.sh [physical NIC name] [number of tap devices]
 ```
 
-5. Fill the configuration file `config.json` with the IP of the host machine (`host_ip` field) and a static IP in your local network for Kata-CVM containers (`cntr_ip` field).
+<!-- 5. Fill the configuration file `config.json` with the IP of the host machine (`host_ip` field) and a static IP in your local network for Kata-CVM containers (`cntr_ip` field). -->
 
 ### Basic Test
 
@@ -71,10 +70,16 @@ The script will output the function's running time as follows.
 
 ### Major Claims
 
-(C1): For the evaluated functions, CoFunc demonstrates significant performance improvements (up to 60x) compared with Kata-CVM, while incurring <14% performance overhead compared with Native. This is proven by the experiment (E1) described in Section 7.1, whose results are illustrated in Figure 11.
+(C1): For the 28 evaluated functions, CoFunc demonstrates significant performance improvements (up to 60x) compared with Kata-CVM, while incurring <14% performance overhead compared with Native. This is proven by the experiment (E1) described in Section 7.1, whose results are illustrated in Figure 11.
+
+(C2): CoFunc outperforms Kata-CVM on FINRA application by 31x when 200 auditing functions start concurrently. This is proven by the experiment (E2) described in Section 7.4 whose results are reported in Section 7.4.
 
 ### Experiments
 
 (E1): [1.5 compute-hours] Evaluate the end-to-end latency of handling a single request for the functions with CVM, Kata-CVM, and Native.
 
-Run the script `scripts/run\_fig11.sh`. This scripts executes the functions with different runtimes and outputs the latencies to the `log` directory. The script will generate a table at `plots/fig11.txt` that contains the function latencies and the overhead/optimization of CoFunc compared with Native/Kata-CVM. Additionally, the script will generate a figure at `plots/fig11.pdf`, which can be compared with Figure 11.
+Run the script `scripts/run\_fig11.sh`. This script executes the functions with different runtimes and outputs the latencies to the `log` directory. The script will generate a table at `plots/fig11.txt` that contains the function latencies and the overhead/optimization of CoFunc compared with Native/Kata-CVM. Additionally, the script will generate a figure at `plots/fig11.pdf`, which can be compared with Figure 11.
+
+(E2): [30 compute-minutes] Evaluate the end-to-end latency of FINRA application with 200 concurrent auditing functions using CoFunc and Kata-CVM.
+
+Run the script `scripts/run_finra.sh`. This script executes FINRA application with different runtimes and outputs the latencies to the `log` directory. The end-to-end application latencies and the optimization of CoFunc compared with Kata-CVM can be found in `plots/finra.txt`.

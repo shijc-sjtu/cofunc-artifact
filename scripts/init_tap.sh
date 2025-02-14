@@ -1,21 +1,23 @@
-#!/bin/bash -e
-
-if [[ $1 == "" ]]; then
-    echo "Usage: init_tap.sh eth"
-fi
+#!/bin/bash -ex
 
 BR=br0
-TAP=tap1
 ETH=$1
+N=${2:-1}
 
-ip tuntap add dev $TAP mode tap
-ip link set $TAP up
-ip addr flush dev $ETH
+ip link set $BR down || true
+brctl delbr $BR || true
 brctl addbr $BR
-brctl addif $BR $TAP
+ip addr flush dev $ETH
 brctl addif $BR $ETH
 ip link set $BR up
 dhclient $BR
+ip addr add 172.16.0.1/16 dev $BR
 
+for i in $(seq $n); do
+    TAP="tap$i"
 
-# echo madvise | sudo tee /sys/kernel/mm/transparent_hugepage/enabled 
+    ip tuntap del $TAP mode tap || true
+    ip tuntap add $TAP mode tap
+    sudo brctl addif $BR $TAP
+    sudo ip link set $NET_DEV up
+done
