@@ -4,22 +4,24 @@ This repository contains the artifact of the paper "Serverless Functions Made Co
 
 The artifact includes the following components:
 * The source code of CoFunc system, including the CVM OS code (`cvm_os`), the shadow container code (`shadow_container`) and the patches for the host Linux/QEMU (`patches`).
-* The serverless functions utilized for the experiment (`testcases/testcases`).
-* The scripts for conducting the experiment (`scripts` and `testcases/tools`).
+* The serverless functions utilized for the evaluation (`testcases/testcases`).
+* The scripts for conducting the experiments (`scripts` and `testcases/tools`).
 
 Users of this artifact can evaluate the performance of serverless functions under different container runtimes,
 including split containers (CoFunc), CVM-based Kata Containers (Kata-CVM), and native lean containers (Native).
 
 ## Hardware dependencies
 
-The artifact requires AMD CPUs with SEV-SNP support and a minimum of 8 GB of memory.
-It has been tested on EPYC-7T83 and EPYC-9654 machines.
-A test server is available for AE reviewers (please refer to the HotCRP submission).
+The artifact requires AMD CPUs with SEV-SNP support.
+It has been tested on an EPYC-7T83 machines.
+At least 96 CPU cores and 180GB of memory are required.
+A test server is available for AE reviewers.
+Please refer to the HotCRP submission for the SSH command and the private key.
 
 ## Software dependencies
 
 The artifact works on an SEV-SNP version of the Linux kernel ([link](https://github.com/AMDESE/linux.git), branch `svsm-preview-hv-v2`), along with the modifications in `patches/linux.patch`.
-The following dependencies are required for building the artifact and running the experiment: Docker, screen, Python 3 (with matplotlib, numpy, boto3, CouchDB) and gcc.
+The following dependencies are required for building the artifact and running the experiments: Docker, screen, Python 3 (with matplotlib, numpy, boto3, pandas, CouchDB) and gcc.
 
 ## Set-up
 
@@ -31,7 +33,7 @@ For other users, the artifact can be installed with the following steps:
 
 1. Download the host kernel code and apply the patch.
 
-2. Build the kernel and reboot with the new kernel. Ensure that cgroup v2 is enabled with the following kernel parameter:
+2. Build the kernel and reboot the machine with the new kernel. Ensure that cgroup v2 is enabled with the following kernel parameter:
 
 ```
 systemd.unified_cgroup_hierarchy=1
@@ -39,7 +41,7 @@ systemd.unified_cgroup_hierarchy=1
 
 3. Build CVM OS, shadow container, serverless functions and some other components with the script `scripts/build.sh`.
 
-4. Enable transparent huge pages with the following commands.
+4. Enable transparent huge pages with the following command.
 
 ```Bash
 echo always | sudo tee /sys/kernel/mm/transparent_hugepage/shmem_enabled
@@ -78,7 +80,7 @@ The script will output the function's running time as follows.
 
 (E1): [1.5 compute-hours] Evaluate the end-to-end latency of handling a single request for the functions with CVM, Kata-CVM, and Native.
 
-Run the script `scripts/run\_fig11.sh`. This script executes the functions with different runtimes and outputs the latencies to the `log` directory. The script will generate a table at `plots/fig11.txt` that contains the function latencies and the overhead/optimization of CoFunc compared with Native/Kata-CVM. Additionally, the script will generate a figure at `plots/fig11.pdf`, which can be compared with Figure 11.
+Run the script `scripts/run_fig11.sh`. This script executes the functions with different runtimes and outputs the latencies to the `log` directory. The script will generate a table at `plots/fig11.txt` that contains the function latencies and the overhead/optimization of CoFunc compared with Native/Kata-CVM. Additionally, the script will generate a figure at `plots/fig11.pdf`, which can be compared with Figure 11.
 
 (E2): [10 compute-minutes] Evaluate the end-to-end latency of FINRA application with 200 concurrent auditing functions using CoFunc and Kata-CVM.
 
