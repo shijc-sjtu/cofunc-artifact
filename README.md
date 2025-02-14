@@ -80,6 +80,8 @@ The script will output the function's running time as follows.
 
 Run the script `scripts/run\_fig11.sh`. This script executes the functions with different runtimes and outputs the latencies to the `log` directory. The script will generate a table at `plots/fig11.txt` that contains the function latencies and the overhead/optimization of CoFunc compared with Native/Kata-CVM. Additionally, the script will generate a figure at `plots/fig11.pdf`, which can be compared with Figure 11.
 
-(E2): [30 compute-minutes] Evaluate the end-to-end latency of FINRA application with 200 concurrent auditing functions using CoFunc and Kata-CVM.
+(E2): [10 compute-minutes] Evaluate the end-to-end latency of FINRA application with 200 concurrent auditing functions using CoFunc and Kata-CVM.
 
 Run the script `scripts/run_finra.sh`. This script executes FINRA application with different runtimes and outputs the latencies to the `log` directory. The end-to-end application latencies and the optimization of CoFunc compared with Kata-CVM can be found in `plots/finra.txt`.
+
+Before running the experiments, the `log` and `plots` directories contain the expected results generated on the authors' machine. New experiments will overwrite these data.
