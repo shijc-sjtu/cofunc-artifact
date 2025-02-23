@@ -3,7 +3,7 @@ ARG BASE_NAME
 FROM split_container_builder:latest as builder
 FROM sc_js_binding_builder:latest as js_binding_builder
 # FROM sc_py_binding_builder:latest as py_binding_builder
-FROM criu_builder:latest as criu_builder
+# FROM criu_builder:latest as criu_builder
 FROM libc_builder:latest as libc_builder
 
 FROM $BASE_NAME
