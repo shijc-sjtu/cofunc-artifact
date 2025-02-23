@@ -58,6 +58,122 @@ index d7847af3e..460af0f45 100644
  }
  
  void kvm_mmu_pre_destroy_vm(struct kvm *kvm)
+diff --git a/arch/x86/kvm/split_container.c b/arch/x86/kvm/split_container.c
+new file mode 100644
+index 000000000..fcd0d5a45
+--- /dev/null
++++ b/arch/x86/kvm/split_container.c
+@@ -0,0 +1,80 @@
++#include "split_container.h"
++
++#define MAX_N_KVMS 32
++static struct kvm *split_container_kvms[MAX_N_KVMS];
++
++void split_container_vm_create(struct kvm *kvm, unsigned int slot_id)
++{
++	if (slot_id >= MAX_N_KVMS) {
++		return;
++	}
++
++	spin_lock_init(&kvm->sc_idle_vcpus_lock);
++	INIT_LIST_HEAD(&kvm->sc_idle_vcpus);
++	split_container_kvms[slot_id] = kvm;
++}
++
++void split_container_vm_destroy(struct kvm *kvm)
++{
++	int i;
++
++	for (i = 0; i < MAX_N_KVMS; i++) {
++		if (kvm == split_container_kvms[i]) {
++			// printk("[SJC] vm_destroy()\n");
++			split_container_kvms[i] = NULL;
++		}
++	}
++}
++
++struct kvm *split_container_vm_get(unsigned int slot_id)
++{
++	if (slot_id >= MAX_N_KVMS) {
++		return NULL;
++	}
++
++	return split_container_kvms[slot_id];
++}
++
++void split_container_vcpu_idle(struct kvm_vcpu *vcpu)
++{
++	struct kvm *kvm = vcpu->kvm;
++
++	// printk("[SJC] vcpu_idle()\n");
++
++	vcpu->sc_idle = true;
++
++	spin_lock(&kvm->sc_idle_vcpus_lock);
++	list_add(&vcpu->sc_idle_node, &kvm->sc_idle_vcpus);
++	spin_unlock(&kvm->sc_idle_vcpus_lock);
++}
++
++bool split_container_vcpu_is_idle(struct kvm_vcpu *vcpu)
++{
++	return vcpu->sc_idle;
++}
++
++struct kvm_vcpu *split_container_vcpu_alloc(struct kvm *kvm)
++{
++	struct kvm_vcpu *vcpu;
++
++	// printk("[SJC] vcpu_alloc()\n");
++
++	if (!kvm) {
++		return NULL;
++	}
++
++	spin_lock(&kvm->sc_idle_vcpus_lock);
++
++	if (list_empty(&kvm->sc_idle_vcpus)){
++		vcpu = NULL;
++	} else {
++		vcpu = list_first_entry(
++			&kvm->sc_idle_vcpus, struct kvm_vcpu, sc_idle_node);
++		list_del(&vcpu->sc_idle_node);
++		vcpu->sc_idle = false;
++	}
++
++	spin_unlock(&kvm->sc_idle_vcpus_lock);
++
++	return vcpu;
++}
+\ No newline at end of file
+diff --git a/arch/x86/kvm/split_container.h b/arch/x86/kvm/split_container.h
+new file mode 100644
+index 000000000..954bba2a2
+--- /dev/null
++++ b/arch/x86/kvm/split_container.h
+@@ -0,0 +1,22 @@
++#ifndef ARCH_X86_KVM_SPLIT_CONTAINER_H
++#define ARCH_X86_KVM_SPLIT_CONTAINER_H
++
++#include <linux/kvm_host.h>
++
++#define KVM_HC_SC_VCPU_IDLE	100
++#define KVM_HC_SC_REQUEST	101
++
++#define KVM_VM_TYPE_SC_MASK	0xFF000000UL
++#define KVM_VM_TYPE_SC_SLOT_ID(type) (((type >> 24) - 1) & 0xFF)
++
++#define KVM_SC_GET_VM		_IO(KVMIO,    0x10)
++#define KVM_SC_ALLOC_VCPU	_IO(KVMIO,    0x11)
++
++void split_container_vm_create(struct kvm *kvm, unsigned int slot_id);
++void split_container_vm_destroy(struct kvm *kvm);
++struct kvm *split_container_vm_get(unsigned int slot_id);
++void split_container_vcpu_idle(struct kvm_vcpu *vcpu);
++bool split_container_vcpu_is_idle(struct kvm_vcpu *vcpu);
++struct kvm_vcpu *split_container_vcpu_alloc(struct kvm *kvm);
++
++#endif /* ARCH_X86_KVM_SPLIT_CONTAINER_H */
+\ No newline at end of file
 diff --git a/arch/x86/kvm/svm/sev.c b/arch/x86/kvm/svm/sev.c
 index 090be7239..9021ce12e 100644
 --- a/arch/x86/kvm/svm/sev.c
@@ -195,6 +311,320 @@ index 57d56cd09..90b9603a2 100644
  };
  
  #define kvm_err(fmt, ...) \
+diff --git a/kernel/cgroup/cpuset.c b/kernel/cgroup/cpuset.c
+index b474289c1..0221f86b0 100644
+--- a/kernel/cgroup/cpuset.c
++++ b/kernel/cgroup/cpuset.c
+@@ -404,15 +404,16 @@ static struct cpuset top_cpuset = {
+  */
+ 
+ DEFINE_STATIC_PERCPU_RWSEM(cpuset_rwsem);
++static DEFINE_MUTEX(cpuset_mutex);
+ 
+ void cpuset_read_lock(void)
+ {
+-	percpu_down_read(&cpuset_rwsem);
++	mutex_lock(&cpuset_mutex);
+ }
+ 
+ void cpuset_read_unlock(void)
+ {
+-	percpu_up_read(&cpuset_rwsem);
++	mutex_unlock(&cpuset_mutex);
+ }
+ 
+ static DEFINE_SPINLOCK(callback_lock);
+@@ -1080,7 +1081,7 @@ static void rebuild_root_domains(void)
+ 	struct cpuset *cs = NULL;
+ 	struct cgroup_subsys_state *pos_css;
+ 
+-	percpu_rwsem_assert_held(&cpuset_rwsem);
++	lockdep_assert_held(&cpuset_mutex);
+ 	lockdep_assert_cpus_held();
+ 	lockdep_assert_held(&sched_domains_mutex);
+ 
+@@ -1141,7 +1142,7 @@ static void rebuild_sched_domains_locked(void)
+ 	int ndoms;
+ 
+ 	lockdep_assert_cpus_held();
+-	percpu_rwsem_assert_held(&cpuset_rwsem);
++	lockdep_assert_held(&cpuset_mutex);
+ 
+ 	/*
+ 	 * If we have raced with CPU hotplug, return early to avoid
+@@ -1192,9 +1193,9 @@ static void rebuild_sched_domains_locked(void)
+ void rebuild_sched_domains(void)
+ {
+ 	cpus_read_lock();
+-	percpu_down_write(&cpuset_rwsem);
++	mutex_lock(&cpuset_mutex);
+ 	rebuild_sched_domains_locked();
+-	percpu_up_write(&cpuset_rwsem);
++	mutex_unlock(&cpuset_mutex);
+ 	cpus_read_unlock();
+ }
+ 
+@@ -1309,7 +1310,7 @@ static int update_parent_subparts_cpumask(struct cpuset *cs, int cmd,
+ 	int old_prs, new_prs;
+ 	int part_error = PERR_NONE;	/* Partition error? */
+ 
+-	percpu_rwsem_assert_held(&cpuset_rwsem);
++	lockdep_assert_held(&cpuset_mutex);
+ 
+ 	/*
+ 	 * The parent must be a partition root.
+@@ -1692,7 +1693,7 @@ static void update_sibling_cpumasks(struct cpuset *parent, struct cpuset *cs,
+ 	struct cpuset *sibling;
+ 	struct cgroup_subsys_state *pos_css;
+ 
+-	percpu_rwsem_assert_held(&cpuset_rwsem);
++	lockdep_assert_held(&cpuset_mutex);
+ 
+ 	/*
+ 	 * Check all its siblings and call update_cpumasks_hier()
+@@ -2448,7 +2449,7 @@ static int cpuset_can_attach(struct cgroup_taskset *tset)
+ 	cpuset_attach_old_cs = task_cs(cgroup_taskset_first(tset, &css));
+ 	cs = css_cs(css);
+ 
+-	percpu_down_write(&cpuset_rwsem);
++	mutex_lock(&cpuset_mutex);
+ 
+ 	/* allow moving tasks into an empty cpuset if on default hierarchy */
+ 	ret = -ENOSPC;
+@@ -2478,7 +2479,7 @@ static int cpuset_can_attach(struct cgroup_taskset *tset)
+ 	cs->attach_in_progress++;
+ 	ret = 0;
+ out_unlock:
+-	percpu_up_write(&cpuset_rwsem);
++	mutex_unlock(&cpuset_mutex);
+ 	return ret;
+ }
+ 
+@@ -2488,9 +2489,9 @@ static void cpuset_cancel_attach(struct cgroup_taskset *tset)
+ 
+ 	cgroup_taskset_first(tset, &css);
+ 
+-	percpu_down_write(&cpuset_rwsem);
++	mutex_lock(&cpuset_mutex);
+ 	css_cs(css)->attach_in_progress--;
+-	percpu_up_write(&cpuset_rwsem);
++	mutex_unlock(&cpuset_mutex);
+ }
+ 
+ /*
+@@ -2514,7 +2515,7 @@ static void cpuset_attach(struct cgroup_taskset *tset)
+ 	cs = css_cs(css);
+ 
+ 	lockdep_assert_cpus_held();	/* see cgroup_attach_lock() */
+-	percpu_down_write(&cpuset_rwsem);
++	mutex_lock(&cpuset_mutex);
+ 
+ 	guarantee_online_mems(cs, &cpuset_attach_nodemask_to);
+ 
+@@ -2566,7 +2567,7 @@ static void cpuset_attach(struct cgroup_taskset *tset)
+ 	if (!cs->attach_in_progress)
+ 		wake_up(&cpuset_attach_wq);
+ 
+-	percpu_up_write(&cpuset_rwsem);
++	mutex_unlock(&cpuset_mutex);
+ }
+ 
+ /* The various types of files and directories in a cpuset file system */
+@@ -2598,7 +2599,7 @@ static int cpuset_write_u64(struct cgroup_subsys_state *css, struct cftype *cft,
+ 	int retval = 0;
+ 
+ 	cpus_read_lock();
+-	percpu_down_write(&cpuset_rwsem);
++	mutex_lock(&cpuset_mutex);
+ 	if (!is_cpuset_online(cs)) {
+ 		retval = -ENODEV;
+ 		goto out_unlock;
+@@ -2634,7 +2635,7 @@ static int cpuset_write_u64(struct cgroup_subsys_state *css, struct cftype *cft,
+ 		break;
+ 	}
+ out_unlock:
+-	percpu_up_write(&cpuset_rwsem);
++	mutex_unlock(&cpuset_mutex);
+ 	cpus_read_unlock();
+ 	return retval;
+ }
+@@ -2647,7 +2648,7 @@ static int cpuset_write_s64(struct cgroup_subsys_state *css, struct cftype *cft,
+ 	int retval = -ENODEV;
+ 
+ 	cpus_read_lock();
+-	percpu_down_write(&cpuset_rwsem);
++	mutex_lock(&cpuset_mutex);
+ 	if (!is_cpuset_online(cs))
+ 		goto out_unlock;
+ 
+@@ -2660,7 +2661,7 @@ static int cpuset_write_s64(struct cgroup_subsys_state *css, struct cftype *cft,
+ 		break;
+ 	}
+ out_unlock:
+-	percpu_up_write(&cpuset_rwsem);
++	mutex_unlock(&cpuset_mutex);
+ 	cpus_read_unlock();
+ 	return retval;
+ }
+@@ -2701,7 +2702,7 @@ static ssize_t cpuset_write_resmask(struct kernfs_open_file *of,
+ 	flush_work(&cpuset_hotplug_work);
+ 
+ 	cpus_read_lock();
+-	percpu_down_write(&cpuset_rwsem);
++	mutex_lock(&cpuset_mutex);
+ 	if (!is_cpuset_online(cs))
+ 		goto out_unlock;
+ 
+@@ -2725,7 +2726,7 @@ static ssize_t cpuset_write_resmask(struct kernfs_open_file *of,
+ 
+ 	free_cpuset(trialcs);
+ out_unlock:
+-	percpu_up_write(&cpuset_rwsem);
++	mutex_unlock(&cpuset_mutex);
+ 	cpus_read_unlock();
+ 	kernfs_unbreak_active_protection(of->kn);
+ 	css_put(&cs->css);
+@@ -2873,13 +2874,13 @@ static ssize_t sched_partition_write(struct kernfs_open_file *of, char *buf,
+ 
+ 	css_get(&cs->css);
+ 	cpus_read_lock();
+-	percpu_down_write(&cpuset_rwsem);
++	mutex_lock(&cpuset_mutex);
+ 	if (!is_cpuset_online(cs))
+ 		goto out_unlock;
+ 
+ 	retval = update_prstate(cs, val);
+ out_unlock:
+-	percpu_up_write(&cpuset_rwsem);
++	mutex_unlock(&cpuset_mutex);
+ 	cpus_read_unlock();
+ 	css_put(&cs->css);
+ 	return retval ?: nbytes;
+@@ -3092,7 +3093,7 @@ static int cpuset_css_online(struct cgroup_subsys_state *css)
+ 		return 0;
+ 
+ 	cpus_read_lock();
+-	percpu_down_write(&cpuset_rwsem);
++	mutex_lock(&cpuset_mutex);
+ 
+ 	set_bit(CS_ONLINE, &cs->flags);
+ 	if (is_spread_page(parent))
+@@ -3143,7 +3144,7 @@ static int cpuset_css_online(struct cgroup_subsys_state *css)
+ 	cpumask_copy(cs->effective_cpus, parent->cpus_allowed);
+ 	spin_unlock_irq(&callback_lock);
+ out_unlock:
+-	percpu_up_write(&cpuset_rwsem);
++	mutex_unlock(&cpuset_mutex);
+ 	cpus_read_unlock();
+ 	return 0;
+ }
+@@ -3164,7 +3165,7 @@ static void cpuset_css_offline(struct cgroup_subsys_state *css)
+ 	struct cpuset *cs = css_cs(css);
+ 
+ 	cpus_read_lock();
+-	percpu_down_write(&cpuset_rwsem);
++	mutex_lock(&cpuset_mutex);
+ 
+ 	if (is_partition_valid(cs))
+ 		update_prstate(cs, 0);
+@@ -3183,7 +3184,7 @@ static void cpuset_css_offline(struct cgroup_subsys_state *css)
+ 	cpuset_dec();
+ 	clear_bit(CS_ONLINE, &cs->flags);
+ 
+-	percpu_up_write(&cpuset_rwsem);
++	mutex_unlock(&cpuset_mutex);
+ 	cpus_read_unlock();
+ }
+ 
+@@ -3196,7 +3197,7 @@ static void cpuset_css_free(struct cgroup_subsys_state *css)
+ 
+ static void cpuset_bind(struct cgroup_subsys_state *root_css)
+ {
+-	percpu_down_write(&cpuset_rwsem);
++	mutex_lock(&cpuset_mutex);
+ 	spin_lock_irq(&callback_lock);
+ 
+ 	if (is_in_v2_mode()) {
+@@ -3209,7 +3210,7 @@ static void cpuset_bind(struct cgroup_subsys_state *root_css)
+ 	}
+ 
+ 	spin_unlock_irq(&callback_lock);
+-	percpu_up_write(&cpuset_rwsem);
++	mutex_unlock(&cpuset_mutex);
+ }
+ 
+ /*
+@@ -3251,7 +3252,7 @@ struct cgroup_subsys cpuset_cgrp_subsys = {
+ 
+ int __init cpuset_init(void)
+ {
+-	BUG_ON(percpu_init_rwsem(&cpuset_rwsem));
++	// BUG_ON(percpu_init_rwsem(&cpuset_rwsem));
+ 
+ 	BUG_ON(!alloc_cpumask_var(&top_cpuset.cpus_allowed, GFP_KERNEL));
+ 	BUG_ON(!alloc_cpumask_var(&top_cpuset.effective_cpus, GFP_KERNEL));
+@@ -3324,7 +3325,7 @@ hotplug_update_tasks_legacy(struct cpuset *cs,
+ 	is_empty = cpumask_empty(cs->cpus_allowed) ||
+ 		   nodes_empty(cs->mems_allowed);
+ 
+-	percpu_up_write(&cpuset_rwsem);
++	mutex_unlock(&cpuset_mutex);
+ 
+ 	/*
+ 	 * Move tasks to the nearest ancestor with execution resources,
+@@ -3334,7 +3335,7 @@ hotplug_update_tasks_legacy(struct cpuset *cs,
+ 	if (is_empty)
+ 		remove_tasks_in_empty_cpuset(cs);
+ 
+-	percpu_down_write(&cpuset_rwsem);
++	mutex_lock(&cpuset_mutex);
+ }
+ 
+ static void
+@@ -3385,14 +3386,14 @@ static void cpuset_hotplug_update_tasks(struct cpuset *cs, struct tmpmasks *tmp)
+ retry:
+ 	wait_event(cpuset_attach_wq, cs->attach_in_progress == 0);
+ 
+-	percpu_down_write(&cpuset_rwsem);
++	mutex_lock(&cpuset_mutex);
+ 
+ 	/*
+ 	 * We have raced with task attaching. We wait until attaching
+ 	 * is finished, so we won't attach a task to an empty cpuset.
+ 	 */
+ 	if (cs->attach_in_progress) {
+-		percpu_up_write(&cpuset_rwsem);
++		mutex_unlock(&cpuset_mutex);
+ 		goto retry;
+ 	}
+ 
+@@ -3486,7 +3487,7 @@ static void cpuset_hotplug_update_tasks(struct cpuset *cs, struct tmpmasks *tmp)
+ 		hotplug_update_tasks_legacy(cs, &new_cpus, &new_mems,
+ 					    cpus_updated, mems_updated);
+ 
+-	percpu_up_write(&cpuset_rwsem);
++	mutex_unlock(&cpuset_mutex);
+ }
+ 
+ /**
+@@ -3516,7 +3517,7 @@ static void cpuset_hotplug_workfn(struct work_struct *work)
+ 	if (on_dfl && !alloc_cpumasks(NULL, &tmp))
+ 		ptmp = &tmp;
+ 
+-	percpu_down_write(&cpuset_rwsem);
++	mutex_lock(&cpuset_mutex);
+ 
+ 	/* fetch the available cpus/mems and find out which changed how */
+ 	cpumask_copy(&new_cpus, cpu_active_mask);
+@@ -3573,7 +3574,7 @@ static void cpuset_hotplug_workfn(struct work_struct *work)
+ 		update_tasks_nodemask(&top_cpuset);
+ 	}
+ 
+-	percpu_up_write(&cpuset_rwsem);
++	mutex_unlock(&cpuset_mutex);
+ 
+ 	/* if cpus or mems changed, we need to propagate to descendants */
+ 	if (cpus_updated || mems_updated) {
 diff --git a/virt/kvm/kvm_main.c b/virt/kvm/kvm_main.c
 index 003cb199b..50cec32ad 100644
 --- a/virt/kvm/kvm_main.c
