@@ -13,11 +13,11 @@ ip link set $BR up
 dhclient $BR
 ip addr add 172.16.0.1/16 dev $BR
 
-for i in $(seq $n); do
+for i in $(seq $N); do
     TAP="tap$i"
 
     ip tuntap del $TAP mode tap || true
     ip tuntap add $TAP mode tap
     sudo brctl addif $BR $TAP
-    sudo ip link set $NET_DEV up
+    sudo ip link set $TAP up
 done
