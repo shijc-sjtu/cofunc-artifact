@@ -24,6 +24,12 @@ sudo rm -rf build
 ./chbuild build
 popd
 
+# Build lean container code
+
+pushd testcases/tools/lean_container
+./build.sh
+popd
+
 # Build shadow container code
 
 pushd shadow_container
